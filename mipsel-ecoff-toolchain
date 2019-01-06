@@ -1,0 +1,281 @@
+#!/bin/bash -e
+#
+# mipsel-ecoff-toolchain
+#
+# Requirements (example is for Debian, replace package names as needed):
+#
+# apt-get install flex bison gcc gcc-multilib g++-multilib autoconf \
+#     curl libc6-dev patch libreadline-dev
+#
+
+##############################################################################
+# Default settings section
+# You probably want to customize those
+# You can also pass them as parameters to the script
+##############################################################################
+TARGET=mipsel-ecoff
+# Install location of your final toolchain
+PREFIX=$(pwd)/yaroze
+# Set to 1 to be quieter while running
+QUIET=0
+# Override automatic detection of cpus to compile on
+CPUS=auto
+
+##############################################################################
+# Parsing command line parameters
+##############################################################################
+
+while [ $# -gt 0 ]; do
+    case $1 in
+	TARGET=*)
+	    TARGET=$(echo $1 | sed 's,^TARGET=,,')
+	    ;;
+	PREFIX=*)
+	    PREFIX=$(echo $1 | sed 's,^PREFIX=,,')
+	    ;;
+	QUIET=*)
+	    QUIET=$(echo $1 | sed 's,^QUIET=,,')
+	    ;;
+	CPUS=*)
+	    CPUS=$(echo $1 | sed 's,^CPUS=,,')
+	    ;;
+	*)
+	    echo "Unknown parameter: $1"
+	    exit 1
+	    ;;
+    esac
+
+    shift # shifting parameter list to access the next one
+done
+
+echo "Settings used for this build are:"
+echo "TARGET=$TARGET"
+echo "PREFIX=$PREFIX"
+echo "QUIET=$QUIET"
+echo "CPUS=$CPUS"
+sleep 1
+
+##############################################################################
+# Version and download url settings section
+##############################################################################
+
+BINUTILS=binutils-2.14
+TEXINFO=texinfo-4.13
+GCCVERSION=2.95.2
+GCC=gcc-${GCCVERSION}
+GCCCORE=gcc-core-${GCCVERSION}
+GCCCPP=gcc-g++-${GCCVERSION}
+GCC3=gcc-3.3.4
+
+##############################################################################
+# Flags section
+##############################################################################
+
+if [ "${CPUS}" == "auto" ]; then
+    if which getconf > /dev/null; then
+        CPUS=$(getconf _NPROCESSORS_ONLN)
+    else
+        CPUS=1
+    fi
+
+    PARALLEL=-j$((CPUS + 1))
+    echo "${CPUS} cpu's detected running make with '${PARALLEL}' flag"
+else
+    PARALLEL=-j${CPUS}
+fi
+
+MAKEFLAGS=${PARALLEL}
+TARFLAGS=v
+
+if [ ${QUIET} != 0 ]; then
+    TARFLAGS=
+    MAKEFLAGS="${MAKEFLAGS} -s"
+fi
+
+export PATH="${PREFIX}/bin:${PATH}"
+
+ROOT_DIR=$(pwd)
+SOURCES=${ROOT_DIR}/sources
+STAMPS=${ROOT_DIR}/stamps
+
+##############################################################################
+# Tool section
+##############################################################################
+TAR=tar
+
+##############################################################################
+# Building section
+# You probably don't have to touch anything after this
+##############################################################################
+
+# Fetch a versioned file from a URL
+function fetch {
+    if [ ! -e ${STAMPS}/$1.fetch ]; then
+        if [ ! -e ${SOURCES}/$1 ]; then
+            log "Downloading $1 sources..."
+            curl -sLO $2 && touch ${STAMPS}/$1.fetch
+        fi
+    fi
+}
+
+# Unpack an archive
+function unpack {
+    log Unpacking $*
+    # Use 'auto' mode decompression.  Replace with a switch if tar doesn't support -a
+    ARCHIVE=$(ls ${SOURCES}/$1.tar.*)
+    case ${ARCHIVE} in
+        *.bz2)
+            echo "archive type bz2"
+            TYPE=j
+            ;;
+        *.gz)
+            echo "archive type gz"
+            TYPE=z
+            ;;
+        *)
+            echo "Unknown archive type of $1"
+            echo ${ARCHIVE}
+            exit 1
+            ;;
+    esac
+    ${TAR} xf${TYPE}${TARFLAGS} ${SOURCES}/$1.tar.*
+}
+
+# Log a message out to the console
+function log {
+    echo "******************************************************************"
+    echo "* $*"
+    echo "******************************************************************"
+}
+
+# Install a build
+function install {
+    log $1
+    ${SUDO} make ${MAKEFLAGS} $2 $3 $4 $5 $6 $7 $8
+}
+
+mkdir -p ${STAMPS} ${SOURCES}
+cd ${SOURCES}
+
+fetch ${TEXINFO} https://ftp.gnu.org/gnu/texinfo/${TEXINFO}.tar.gz
+fetch ${BINUTILS} https://ftp.gnu.org/gnu/binutils/${BINUTILS}.tar.gz
+fetch ${GCCCORE} https://ftp.gnu.org/gnu/gcc/${GCC}/${GCCCORE}.tar.gz
+fetch ${GCCCPP} https://ftp.gnu.org/gnu/gcc/${GCC}/${GCCCPP}.tar.gz
+fetch ${GCC3} https://ftp.gnu.org/gnu/gcc/${GCC3}/${GCC3}.tar.gz
+
+cd ${ROOT_DIR}
+
+if [ ! -e build ]; then
+    mkdir build
+fi
+
+export LIBRARY_PATH=${PREFIX}/mipsel-ecoff${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+
+if [ ! -e ${STAMPS}/install-libps.build ]; then
+    log "Creating libps directory:" ${PREFIX}/mipsel-ecoff
+    mkdir -p ${PREFIX}/mipsel-ecoff
+    cp -R sdk/* ${PREFIX}/mipsel-ecoff/
+    touch ${STAMPS}/install-libps.build
+fi
+
+if [ ! -e ${STAMPS}/${TEXINFO}.build ]; then
+    unpack ${TEXINFO}
+    cd build
+    log "Configuring ${TEXINFO}"
+    ../${TEXINFO}/configure --prefix=${PREFIX}
+    log "Building ${BINUTILS}"
+    make ${MAKEFLAGS}
+    install ${TEXINFO} install
+    cd ..
+    log "Cleaning up ${TEXINFO}"
+    touch ${STAMPS}/${TEXINFO}.build
+    rm -rf build/* ${TEXINFO}
+fi
+
+if [ ! -e ${STAMPS}/${GCC3}.build ]; then
+    unpack ${GCC3}
+    log "Patching GCC to address change in types to siginfo_t"
+    cd ${GCC3}
+    patch -Np1 -i ../patches/siginfo_t_fix_x86_64.patch
+    cd ../build
+    log "Configuring ${GCC3}"
+    ../${GCC3}/configure \
+        --prefix=${PREFIX} \
+        --enable-languages=c,c++ \
+        --enable-shared \
+        --enable-threads=posix \
+        --disable-multilib \
+        --host=x86_64-pc-linux-gnu
+    log "Building ${GCC3}"
+    make bootstrap ${MAKEFLAGS}
+    install ${GCC3} install
+    cd ..
+    log "Cleaning up ${GCC3}"
+    touch ${STAMPS}/${GCC3}.build
+    rm -rf build/* ${GCC3}
+fi
+
+if [ ! -e ${STAMPS}/${BINUTILS}.build ]; then
+    unpack ${BINUTILS}
+    cd build
+    log "Configuring ${BINUTILS}"
+    ../${BINUTILS}/configure \
+        --prefix=${PREFIX} \
+        --target=mipsel-ecoff
+    log "Building ${BINUTILS}"
+    make ${MAKEFLAGS}
+    install ${BINUTILS} install
+    cd ..
+    log "Cleaning up ${BINUTILS}"
+    touch ${STAMPS}/${BINUTILS}.build
+    rm -rf build/* ${BINUTILS}
+fi
+
+if [ ! -e ${STAMPS}/${GCC}.build ]; then
+    unpack ${GCCCORE}
+    unpack ${GCCCPP}
+    cd build
+    log "Configuring ${GCC}"
+    linux32 ../${GCC}/configure \
+        --prefix=${PREFIX} \
+        --enable-languages=c \
+        --target=mipsel-ecoff \
+        --with-gnu-as \
+        --with-gnu-ld \
+        --disable-nls \
+        --disable-multilib
+    echo "MAKEINFO = ${PREFIX}/bin/makeinfo" >> Makefile
+    sed -i 's/^ALL_TARGET_MODULES/#&/' Makefile
+    sed -i 's/^INSTALL_TARGET_MODULES/#&/' Makefile
+    log "Building ${GCC}"
+    make ${MAKEFLAGS} CC="${PREFIX}/bin/gcc"
+    make install CC="${PREFIX}/bin/gcc"
+    SPECS=${PREFIX}/lib/gcc-lib/mipsel-ecoff/${GCCVERSION}/specs
+    STARTUP_OBJ=$(echo ${PREFIX}/mipsel-ecoff/lib/startup.o | sed "s/\//\\\\\//g")
+    sed -i 's/-lc/-lps/' ${SPECS}
+    sed -i "/\*startfile:/!b;n;c${STARTUP_OBJ}" ${SPECS}
+    sed -i 's/-D_R3000/& -Dpsx -Dunix/' ${SPECS}
+    cd ..
+    log "Cleaning up ${GCC}"
+    touch ${STAMPS}/${GCC}.build
+    rm -rf build/* ${GCC}
+fi
+
+cat << EOF
+
+******************************************************************
+* Cross-compiler toolchain for ${TARGET} created
+* successfully using the following setting:
+*
+*     PREFIX:      ${PREFIX}
+*     BINUTILS:    ${BINUTILS}
+*     GCC:         ${GCC}
+*     TEXINFO:     ${TEXINFO}
+*
+* When using the compiler, you may need to setup some environment
+* variables such as ensuring the toolchain is in the path:
+*
+*     export PATH=${PREFIX}/bin:\$PATH
+*
+******************************************************************
+EOF

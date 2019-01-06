@@ -1,0 +1,25 @@
+--- gcc-3.3.4/gcc/config/i386/linux64.h.old	2019-01-06 08:08:50.166293860 -0500
++++ gcc-3.3.4/gcc/config/i386/linux64.h	2019-01-06 08:18:21.548885467 -0500
+@@ -112,7 +112,7 @@
+     if (*(unsigned char *)(pc_+0) == 0x48				\
+ 	&& *(unsigned long *)(pc_+1) == 0x050f0000000fc0c7)		\
+       {									\
+-	struct ucontext *uc_ = (CONTEXT)->cfa;				\
++	ucontext_t *uc_ = (CONTEXT)->cfa;				\
+ 	sc_ = (struct sigcontext *) &uc_->uc_mcontext;			\
+       }									\
+     else								\
+@@ -179,10 +179,10 @@
+       {									\
+ 	struct rt_sigframe {						\
+ 	  int sig;							\
+-	  struct siginfo *pinfo;					\
++	  siginfo_t *pinfo;						\
+ 	  void *puc;							\
+-	  struct siginfo info;						\
+-	  struct ucontext uc;						\
++	  siginfo_t info;						\
++	  ucontext_t uc;						\
+ 	} *rt_ = (CONTEXT)->cfa;					\
+ 	sc_ = (struct sigcontext *) &rt_->uc.uc_mcontext;		\
+       }									\
