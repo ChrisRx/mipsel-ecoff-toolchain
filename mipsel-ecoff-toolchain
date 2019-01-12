@@ -178,6 +178,10 @@ if [ ! -e ${STAMPS}/install-libps.build ]; then
     touch ${STAMPS}/install-libps.build
 fi
 
+# Install texinfo
+# There are some incompatibilities with `makeinfo` and older versions of GCC.
+# It is difficult to prevent both building the info files AND installing them,
+# so rather than do so we just let it happen.
 if [ ! -e ${STAMPS}/${TEXINFO}.build ]; then
     unpack ${TEXINFO}
     cd build
@@ -192,10 +196,19 @@ if [ ! -e ${STAMPS}/${TEXINFO}.build ]; then
     rm -rf build/* ${TEXINFO}
 fi
 
+# Install intermediate GCC
+# GCC 3.3.4 is being used here because it definitely compiles GCC 2.95.2 and
+# only needs small modifications to make it install with a modern version of
+# GCC.
 if [ ! -e ${STAMPS}/${GCC3}.build ]; then
     unpack ${GCC3}
     log "Patching GCC to address change in types to siginfo_t"
     cd ${GCC3}
+    # This patch changes types previously declared as `struct siginfo` and
+    # `struct ucontext` to `siginfo_t` and `ucontext_t`, respectively. This
+    # fixes a compiler error where newer GCC versions consider the older types
+    # to be "incomplete" by throwing an error like "error: Dereferencing
+    # pointer to incomplete type".
     patch -Np1 -i ../patches/siginfo_t_fix_x86_64.patch
     cd ../build
     log "Configuring ${GCC3}"
@@ -215,13 +228,18 @@ if [ ! -e ${STAMPS}/${GCC3}.build ]; then
     rm -rf build/* ${GCC3}
 fi
 
+# Install binutils
 if [ ! -e ${STAMPS}/${BINUTILS}.build ]; then
     unpack ${BINUTILS}
     cd build
     log "Configuring ${BINUTILS}"
     ../${BINUTILS}/configure \
         --prefix=${PREFIX} \
-        --target=mipsel-ecoff
+        --exec-prefix=${PREFIX} \
+        --with-sysroot=/ \
+        --with-lib-path=${PREFIX}/lib \
+        --disable-werror \
+        --enable-targets=mipsel-ecoff,x86_64-linux-gnu,i686-linux-gnu
     log "Building ${BINUTILS}"
     make ${MAKEFLAGS}
     install ${BINUTILS} install
@@ -231,15 +249,20 @@ if [ ! -e ${STAMPS}/${BINUTILS}.build ]; then
     rm -rf build/* ${BINUTILS}
 fi
 
+exit 1
+
+# Install target GCC compiler
 if [ ! -e ${STAMPS}/${GCC}.build ]; then
     unpack ${GCCCORE}
     unpack ${GCCCPP}
     cd build
     log "Configuring ${GCC}"
+    # Only enabling C at this time, but C++ is probably going to be simple to
+    # add (hopefully).
     linux32 ../${GCC}/configure \
         --prefix=${PREFIX} \
+        --target=${TARGET} \
         --enable-languages=c \
-        --target=mipsel-ecoff \
         --with-gnu-as \
         --with-gnu-ld \
         --disable-nls \
@@ -260,6 +283,9 @@ if [ ! -e ${STAMPS}/${GCC}.build ]; then
     touch ${STAMPS}/${GCC}.build
     rm -rf build/* ${GCC}
 fi
+
+log "Cleaning up build directory ..."
+make clean
 
 cat << EOF
 
