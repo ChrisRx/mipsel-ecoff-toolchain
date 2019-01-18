@@ -61,7 +61,7 @@ sleep 1
 
 BINUTILS=binutils-2.14
 TEXINFO=texinfo-4.13
-GCCVERSION=2.95.2
+GCCVERSION=2.95.3
 GCC=gcc-${GCCVERSION}
 GCCCORE=gcc-core-${GCCVERSION}
 GCCCPP=gcc-g++-${GCCVERSION}
@@ -97,6 +97,7 @@ export PATH="${PREFIX}/bin:${PATH}"
 ROOT_DIR=$(pwd)
 SOURCES=${ROOT_DIR}/sources
 STAMPS=${ROOT_DIR}/stamps
+TMP=${ROOT_DIR}/tmp
 
 ##############################################################################
 # Tool section
@@ -138,7 +139,7 @@ function unpack {
             exit 1
             ;;
     esac
-    ${TAR} xf${TYPE}${TARFLAGS} ${SOURCES}/$1.tar.*
+    ${TAR} xf${TYPE}${TARFLAGS} ${SOURCES}/$1.tar.* -C ${SOURCES}
 }
 
 # Log a message out to the console
@@ -161,6 +162,7 @@ fetch ${TEXINFO} https://ftp.gnu.org/gnu/texinfo/${TEXINFO}.tar.gz
 fetch ${BINUTILS} https://ftp.gnu.org/gnu/binutils/${BINUTILS}.tar.gz
 fetch ${GCCCORE} https://ftp.gnu.org/gnu/gcc/${GCC}/${GCCCORE}.tar.gz
 fetch ${GCCCPP} https://ftp.gnu.org/gnu/gcc/${GCC}/${GCCCPP}.tar.gz
+#fetch ${GCC} https://ftp.gnu.org/gnu/gcc/${GCC}/${GCC}.tar.gz
 fetch ${GCC3} https://ftp.gnu.org/gnu/gcc/${GCC3}/${GCC3}.tar.gz
 
 cd ${ROOT_DIR}
@@ -169,7 +171,12 @@ if [ ! -e build ]; then
     mkdir build
 fi
 
-export LIBRARY_PATH=${PREFIX}/mipsel-ecoff${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+if [ ! -e tmp ]; then
+    mkdir tmp
+fi
+
+RUNTIMELIB=$(dirname $(find /usr/ -name crti* | grep $(uname -m) | head -n 1))
+export LIBRARY_PATH=$RUNTIMELIB:${PREFIX}/mipsel-ecoff${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 
 if [ ! -e ${STAMPS}/install-libps.build ]; then
     log "Creating libps directory:" ${PREFIX}/mipsel-ecoff
@@ -186,8 +193,8 @@ if [ ! -e ${STAMPS}/${TEXINFO}.build ]; then
     unpack ${TEXINFO}
     cd build
     log "Configuring ${TEXINFO}"
-    ../${TEXINFO}/configure --prefix=${PREFIX}
-    log "Building ${BINUTILS}"
+    ${SOURCES}/${TEXINFO}/configure --prefix=${PREFIX}
+    log "Building ${TEXINFO}"
     make ${MAKEFLAGS}
     install ${TEXINFO} install
     cd ..
@@ -201,78 +208,103 @@ fi
 # only needs small modifications to make it install with a modern version of
 # GCC.
 if [ ! -e ${STAMPS}/${GCC3}.build ]; then
+    # Clean-up build dir just in case the previous attempt failed
+    rm -rf build/* ${SOURCES}/${GCC3}
+
     unpack ${GCC3}
     log "Patching GCC to address change in types to siginfo_t"
-    cd ${GCC3}
+    cd ${SOURCES}/${GCC3}
     # This patch changes types previously declared as `struct siginfo` and
     # `struct ucontext` to `siginfo_t` and `ucontext_t`, respectively. This
     # fixes a compiler error where newer GCC versions consider the older types
     # to be "incomplete" by throwing an error like "error: Dereferencing
     # pointer to incomplete type".
-    patch -Np1 -i ../patches/siginfo_t_fix_x86_64.patch
-    cd ../build
+    patch -Np1 -i ${ROOT_DIR}/patches/siginfo_t_fix_x86_64.patch
+    cd ../../build
+
     log "Configuring ${GCC3}"
-    ../${GCC3}/configure \
-        --prefix=${PREFIX} \
-        --enable-languages=c,c++ \
-        --enable-shared \
-        --enable-threads=posix \
-        --disable-multilib \
-        --host=x86_64-pc-linux-gnu
+    ${SOURCES}/${GCC3}/configure \
+	--prefix=${TMP} \
+	--exec-prefix=${TMP} \
+	--with-sysroot=/ \
+	--with-lib-path=${TMP}/lib \
+	--disable-werror \
+	--enable-languages=c \
+	--enable-shared \
+	--disable-multilib
     log "Building ${GCC3}"
     make bootstrap ${MAKEFLAGS}
     install ${GCC3} install
     cd ..
     log "Cleaning up ${GCC3}"
     touch ${STAMPS}/${GCC3}.build
-    rm -rf build/* ${GCC3}
+    rm -rf build/* ${SOURCES}/${GCC3}
 fi
+
+export CC=${TMP}/bin/gcc
 
 # Install binutils
 if [ ! -e ${STAMPS}/${BINUTILS}.build ]; then
+    # Clean-up build dir just in case the previous attempt failed
+    rm -rf build/* ${SOURCES}/${BINUTILS}
+
     unpack ${BINUTILS}
     cd build
     log "Configuring ${BINUTILS}"
-    ../${BINUTILS}/configure \
+    ${SOURCES}/${BINUTILS}/configure \
         --prefix=${PREFIX} \
+        --target=${TARGET} \
         --exec-prefix=${PREFIX} \
         --with-sysroot=/ \
         --with-lib-path=${PREFIX}/lib \
-        --disable-werror \
-        --enable-targets=mipsel-ecoff,x86_64-linux-gnu,i686-linux-gnu
+        --disable-multilib \
+        --disable-werror
     log "Building ${BINUTILS}"
     make ${MAKEFLAGS}
-    install ${BINUTILS} install
+    make install
     cd ..
     log "Cleaning up ${BINUTILS}"
     touch ${STAMPS}/${BINUTILS}.build
-    rm -rf build/* ${BINUTILS}
+    rm -rf build/* ${SOURCES}/${BINUTILS}
 fi
-
-exit 1
 
 # Install target GCC compiler
 if [ ! -e ${STAMPS}/${GCC}.build ]; then
+    # Clean-up build dir just in case the previous attempt failed
+    rm -rf build/* ${SOURCES}/${GCC}
+
     unpack ${GCCCORE}
     unpack ${GCCCPP}
     cd build
     log "Configuring ${GCC}"
+
+    HOST=$(${TMP}/bin/gcc -dumpmachine)
+    case $HOST in
+        x86_64*linux*)
+            HOST=i686-linux-gnu
+            ;;
+        *)
+            echo "Unknown host system: $HOST"
+            exit 1
+    esac
+
     # Only enabling C at this time, but C++ is probably going to be simple to
     # add (hopefully).
-    linux32 ../${GCC}/configure \
+    ${SOURCES}/${GCC}/configure \
         --prefix=${PREFIX} \
         --target=${TARGET} \
         --enable-languages=c \
         --with-gnu-as \
         --with-gnu-ld \
         --disable-nls \
+        --host=${HOST} \
         --disable-multilib
     echo "MAKEINFO = ${PREFIX}/bin/makeinfo" >> Makefile
     sed -i 's/^ALL_TARGET_MODULES/#&/' Makefile
     sed -i 's/^INSTALL_TARGET_MODULES/#&/' Makefile
     log "Building ${GCC}"
-    make ${MAKEFLAGS} CC="${PREFIX}/bin/gcc"
-    make install CC="${PREFIX}/bin/gcc"
+    make ${MAKEFLAGS}
+    make install
     SPECS=${PREFIX}/lib/gcc-lib/mipsel-ecoff/${GCCVERSION}/specs
     STARTUP_OBJ=$(echo ${PREFIX}/mipsel-ecoff/lib/startup.o | sed "s/\//\\\\\//g")
     sed -i 's/-lc/-lps/' ${SPECS}
@@ -281,7 +313,7 @@ if [ ! -e ${STAMPS}/${GCC}.build ]; then
     cd ..
     log "Cleaning up ${GCC}"
     touch ${STAMPS}/${GCC}.build
-    rm -rf build/* ${GCC}
+    rm -rf build/* ${SOURCES}/${GCC}
 fi
 
 log "Cleaning up build directory ..."
