@@ -1,5 +1,5 @@
 # mipsel-ecoff-toolchain
-A cross compiler toolchain for the Sony Playstation [Net Yaroze](https://en.wikipedia.org/wiki/Net_Yaroze). The Net Yaroze SDK (included) used the mipsel-ecoff which has long since been considered obselete in GCC and therefore requires a much older version of GCC. Compiling these older versions of Binutils/GCC is achieved by using a modern version of GCC to compile an intermediate version of GCC that allows stepping backwards to the desired version (e.g. GCC v8.2.1 -> GCC v3.3.4 -> GCC v2.95.2). The final cross compiler is then able to cross compile the defunct combination of 32-bit MIPS (LE) and the ECOFF file object format used with the Net Yaroze SDK.
+A cross compiler toolchain for the Sony Playstation [Net Yaroze](https://en.wikipedia.org/wiki/Net_Yaroze). The Net Yaroze SDK (included) uses the mipsel-ecoff target which has long since been considered obselete in GCC and therefore requires a much older version of GCC. Compiling these older versions of Binutils/GCC is achieved by using a modern version of GCC to compile an intermediate version of GCC that allows stepping backwards to the desired version (e.g. GCC v8.2.1 -> GCC v3.3.4 -> GCC v2.95.2). The final cross compiler is then able to cross compile the defunct combination of 32-bit MIPS (LE) and the ECOFF file object format used with the Net Yaroze SDK.
 
 # Building
 
