@@ -59,7 +59,7 @@ sleep 1
 # Version and download url settings section
 ##############################################################################
 
-BINUTILS=binutils-2.14
+BINUTILS=binutils-2.22
 TEXINFO=texinfo-4.13
 GCCVERSION=2.95.3
 GCC=gcc-${GCCVERSION}
@@ -162,7 +162,6 @@ fetch ${TEXINFO} https://ftp.gnu.org/gnu/texinfo/${TEXINFO}.tar.gz
 fetch ${BINUTILS} https://ftp.gnu.org/gnu/binutils/${BINUTILS}.tar.gz
 fetch ${GCCCORE} https://ftp.gnu.org/gnu/gcc/${GCC}/${GCCCORE}.tar.gz
 fetch ${GCCCPP} https://ftp.gnu.org/gnu/gcc/${GCC}/${GCCCPP}.tar.gz
-#fetch ${GCC} https://ftp.gnu.org/gnu/gcc/${GCC}/${GCC}.tar.gz
 fetch ${GCC3} https://ftp.gnu.org/gnu/gcc/${GCC3}/${GCC3}.tar.gz
 
 cd ${ROOT_DIR}
@@ -176,17 +175,18 @@ if [ ! -e tmp ]; then
 fi
 
 RUNTIMELIB=$(dirname $(find /usr/ -name crti* | grep $(uname -m) | head -n 1))
-export LIBRARY_PATH=$RUNTIMELIB:${PREFIX}/mipsel-ecoff${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH/%:/}
+export LIBRARY_PATH=$RUNTIMELIB:${PREFIX}/${TARGET}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 
 if [ ! -e ${STAMPS}/install-libps.build ]; then
-    log "Creating libps directory:" ${PREFIX}/mipsel-ecoff
-    mkdir -p ${PREFIX}/mipsel-ecoff
-    cp -R sdk/* ${PREFIX}/mipsel-ecoff/
+    log "Creating libps directory:" ${PREFIX}/${TARGET}
+    mkdir -p ${PREFIX}/${TARGET}
+    cp -R sdk/* ${PREFIX}/${TARGET}/
     touch ${STAMPS}/install-libps.build
 fi
 
 # Install texinfo
-# There are some incompatibilities with `makeinfo` and older versions of GCC.
+# There are some incompatibilities with `makeinfo` in older versions of GCC.
 # It is difficult to prevent both building the info files AND installing them,
 # so rather than do so we just let it happen.
 if [ ! -e ${STAMPS}/${TEXINFO}.build ]; then
@@ -251,6 +251,7 @@ if [ ! -e ${STAMPS}/${BINUTILS}.build ]; then
     unpack ${BINUTILS}
     cd build
     log "Configuring ${BINUTILS}"
+
     ${SOURCES}/${BINUTILS}/configure \
         --prefix=${PREFIX} \
         --target=${TARGET} \
@@ -305,8 +306,8 @@ if [ ! -e ${STAMPS}/${GCC}.build ]; then
     log "Building ${GCC}"
     make ${MAKEFLAGS}
     make install
-    SPECS=${PREFIX}/lib/gcc-lib/mipsel-ecoff/${GCCVERSION}/specs
-    STARTUP_OBJ=$(echo ${PREFIX}/mipsel-ecoff/lib/startup.o | sed "s/\//\\\\\//g")
+    SPECS=${PREFIX}/lib/gcc-lib/${TARGET}/${GCCVERSION}/specs
+    STARTUP_OBJ=$(echo ${PREFIX}/${TARGET}/lib/startup.o | sed "s/\//\\\\\//g")
     sed -i 's/-lc/-lps/' ${SPECS}
     sed -i "/\*startfile:/!b;n;c${STARTUP_OBJ}" ${SPECS}
     sed -i 's/-D_R3000/& -Dpsx -Dunix/' ${SPECS}
