@@ -181,7 +181,7 @@ export LIBRARY_PATH=$RUNTIMELIB:${PREFIX}/${TARGET}${LD_LIBRARY_PATH:+:$LD_LIBRA
 if [ ! -e ${STAMPS}/install-libps.build ]; then
     log "Creating libps directory:" ${PREFIX}/${TARGET}
     mkdir -p ${PREFIX}/${TARGET}
-    cp -R sdk/* ${PREFIX}/${TARGET}/
+    cp -R ${ROOT_DIR}/../sdk/* ${PREFIX}/${TARGET}/
     touch ${STAMPS}/install-libps.build
 fi
 
