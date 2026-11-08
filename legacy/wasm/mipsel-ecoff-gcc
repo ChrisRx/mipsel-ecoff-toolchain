@@ -1,0 +1,50 @@
+#!/bin/sh
+# The gcc driver for the WebAssembly modules. WASI has no processes, so the
+# driver, xgcc.wasm, writes down what it would run instead of running it:
+# each program and its arguments, in a plan file. This runs the driver for
+# the plan, and then each step of it in turn under a WASI runtime, and stops
+# at the first that fails, with its status.
+#
+# The runtime is wasmtime, or what MIPSEL_ECOFF_WASI_RUNTIME names, which
+# takes wasmtime's arguments: run, -W exceptions=y for the setjmp cpp uses,
+# --dir and --env. Every module sees the host's file system as it is, and
+# starts in the directory this runs in.
+prefix=$(cd "$(dirname "$0")/.." && pwd)
+runtime=${MIPSEL_ECOFF_WASI_RUNTIME:-@wasmtime@}
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/mipsel-ecoff-gcc.XXXXXX") || exit 1
+trap 'rm -rf "$tmp"' EXIT
+exec_prefix=$prefix/lib/gcc-lib/
+
+run() {
+	module=$1
+	shift
+	"$runtime" run -W exceptions=y --dir /::/ \
+		--env PWD="$PWD" --env TMPDIR="$tmp" \
+		--env GCC_EXEC_PREFIX="$exec_prefix" --env GCC_WASI_PLAN="$tmp/plan" \
+		"$module" "$@"
+}
+
+run "$prefix/libexec/mipsel-ecoff/xgcc.wasm" "$@" || exit
+[ -f "$tmp/plan" ] || exit 0
+
+# Each step is a program and its arguments, one to a line, and a blank line.
+# The driver names a program by its path when it found it and by its name
+# when it did not, as for as and ld, which it looks for under the prefix it
+# was built with. collect2 passes a C program's link to ld as it is, so ld
+# runs in its place.
+set --
+while IFS= read -r line; do
+	if [ -n "$line" ]; then
+		set -- "$@" "$line"
+		continue
+	fi
+	program=$1
+	shift
+	case $(basename "$program") in
+	as) program=$prefix/mipsel-ecoff/bin/as ;;
+	ld | collect2) program=$prefix/mipsel-ecoff/bin/ld ;;
+	*) case $program in */*) ;; *) program=${exec_prefix}mipsel-ecoff/2.95.3/$program ;; esac ;;
+	esac
+	run "$program" "$@" || exit
+	set --
+done < "$tmp/plan"

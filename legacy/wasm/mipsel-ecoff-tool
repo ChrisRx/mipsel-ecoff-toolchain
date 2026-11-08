@@ -1,0 +1,15 @@
+#!/bin/sh
+# One of the toolchain's other programs, as, ld, ar, nm or objdump, by the
+# name this is linked as, under a WASI runtime, as mipsel-ecoff-gcc runs it.
+prefix=$(cd "$(dirname "$0")/.." && pwd)
+runtime=${MIPSEL_ECOFF_WASI_RUNTIME:-@wasmtime@}
+name=$(basename "$0")
+name=${name#mipsel-ecoff-}
+case $name in
+ranlib) set -- s "$@"; name=ar ;;
+esac
+case $name in
+as | ld) module=$prefix/mipsel-ecoff/bin/$name ;;
+*) module=$prefix/libexec/mipsel-ecoff/$name.wasm ;;
+esac
+exec "$runtime" run -W exceptions=y --dir /::/ --env PWD="$PWD" "$module" "$@"
