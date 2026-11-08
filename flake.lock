@@ -1,0 +1,44 @@
+{
+  "nodes": {
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1791734076,
+        "narHash": "sha256-i5qk1kLiit98rRbh1AXmWBNT9QXC/y4l5Wk/u5EdpDQ=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "7fd4004d0511991fff3a0524856a9be09e28c5f0",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "nixos-unstable",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "psxsdk": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1794168259,
+        "narHash": "sha256-oSNUOUDoZ+Q414QONlUkNXp0/65c2oaZKAuZXdi6cyg=",
+        "owner": "ChrisRx",
+        "repo": "psxsdk",
+        "rev": "5dd44dec78f15b30e6ff4f3776b5c9691b1c3bf8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ChrisRx",
+        "repo": "psxsdk",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nixpkgs": "nixpkgs",
+        "psxsdk": "psxsdk"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

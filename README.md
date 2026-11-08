@@ -1,41 +1,83 @@
-# mipsel-ecoff-toolchain
-A cross compiler toolchain for the Sony Playstation [Net Yaroze](https://en.wikipedia.org/wiki/Net_Yaroze). The Net Yaroze SDK (included) uses the mipsel-ecoff target which has long since been considered obselete in GCC and therefore requires a much older version of GCC. Compiling these older versions of Binutils/GCC is achieved by using a modern version of GCC to compile an intermediate version of GCC that allows stepping backwards to the desired version (e.g. GCC v8.2.1 -> GCC v3.3.4 -> GCC v2.95.2). The final cross compiler is then able to cross compile the defunct combination of 32-bit MIPS (LE) and the ECOFF file object format used with the Net Yaroze SDK.
+# yaroze-toolchain
 
-# Building
+Build Sony PlayStation [Net Yaroze](https://en.wikipedia.org/wiki/Net_Yaroze) programs in C with current GCC and Binutils, targeting `mipsel-none-elf`. The Net Yaroze SDK is included.
 
-If a `PREFIX` isn't given, it simply defaults to `$PWD/yaroze`.
+The SDK shipped for `mipsel-ecoff`, a target long since removed from GCC, but that was only ever a container. The PlayStation CPU is an R3000A either way, and the console's serial loader takes a flat image, a load address and an entry point, so a current compiler produces the same kind of program with no old toolchain to bootstrap. The original GCC 2.95.3 is still here, in [legacy/](legacy/README.md), and the flake can build it too.
 
-```
-./mipsel-ecoff-toolchain PREFIX=$PWD/yaroze
-```
+## Looking for more than GCC?
 
-This will make folders during the build process: `{build,sources,stamps}`. These can be cleaned up also using `make clean`.
+[psxsdk](https://github.com/ChrisRx/psxsdk) also compiles Net Yaroze C projects, with [its `yaroze` command](https://chrisrx.github.io/psxsdk/tools/yaroze/#c-projects) and nothing else but Go to install, and does a ton more: writing programs in Go, converting art, sound and models to the console's formats, building discs, an emulator, [playable examples](https://chrisrx.github.io/psxsdk/examples/) and [Sony's manuals](https://chrisrx.github.io/psxsdk/manuals/). This repository is for building with GCC specifically.
 
-Originally, I was building this toolchain in a docker container, but ultimately found it not necessary on the OSes I was working with (Ubuntu and Arch Linux). However, others have had success building this toolchain on a different OS/platform using docker. For example, [docker-yaroze](https://github.com/Davermouse/docker-yaroze) has compiled Net Yaroze executables successfully on macOS. I'm unfamiliar with the docker environment on Windows, but the capability to run linux containers should be roughly the same (probably through WSL). In any case, it's worth giving a look if you are needing to build on a non-linux OS.
+## Writing your own program
 
-# Compiling the sample
-
-The sample project is one included with the Net Yaroze SDK and can be used to verify that the toolchain is working:
+You do not need a copy of this repository to build against the SDK. Start a project from the template:
 
 ```
-cd <PREFIX>/mipsel-ecoff/sample/sjiscode
+nix flake init -t github:ChrisRx/yaroze-toolchain
+nix develop github:ChrisRx/yaroze-toolchain#sdk
 make
 ```
 
-Should produce a binary that looks like this:
+That gives you a `build/hello.exe` an emulator can boot. The whole project Makefile is:
+
+```make
+PROG = hello
+SRCS = main.c
+
+include $(YAROZE_PREFIX)/yaroze.mk
+```
+
+`yaroze.mk` carries the compiler flags, the link against the resident libps, and the `.elf` → `.bin` → `.exe` steps. `YAROZE_PREFIX` is set by the `sdk` dev shell; `CFLAGS`, `CPPFLAGS`, `LDFLAGS` and `LDLIBS` are appended to its defaults, so adding to them in your Makefile works as expected. The samples in this repo are built through the same file, so that path stays exercised.
+
+## Nix
+
+Nix is the supported way to build here. A flake provides each environment, so none of them needs packages installed by hand:
 
 ```
-$ file main
-main: MIPSEL ECOFF executable (paged) not stripped - version 2.11
+nix develop             # work on this repo: toolchain, psxsdk commands, make
+nix develop .#sdk       # write your own program against a prebuilt SDK
+nix develop .#legacy    # the original mipsel-ecoff GCC 2.95.3, Linux only, see legacy/
 ```
 
-# Running executables
+The `mipsel-none-elf` toolchain and the psxsdk commands come from a binary cache named in the flake, so Nix asks once whether to trust its settings. Say yes, or pass `--accept-flake-config`, or the toolchain compiles locally instead. On a multi-user install this also needs your user in `trusted-users`. `nix build .#gcc` builds just the compiler; `nix build .#libyaroze` builds the SDK tree that `YAROZE_PREFIX` points at.
 
-Since Net Yaroze executables are not PSX-EXE files (PS1 executable format) they cannot be loaded into an emulator or CD iso builder. The Net Yaroze Boot Disk (DTL-S3035) runs a program that listens for serial I/O commands and loads the entire Net Yaroze SDK into memory. At this point, SIOCONS.EXE can be used to load the Net Yaroze executable at the correct starting address and the serial command to execute whats loaded into memory can then be sent. It is possible to prebuild a PSX-EXE that loads a bare Net Yaroze executable in a similar way by combining it with the SDK into a single PSX-EXE file. To do this, I've adapted the [https://github.com/gwald/Yarexe](https://github.com/gwald/Yarexe) tool (itself also a combination of the work of others) into [eco2exe](https://github.com/ChrisRx/psxsdk#eco2exe) over in the repo I currently keep assorted psx/ny dev tools. I adapted it with the hopes that it will be slightly more portable and maintainable as a Go project.
+Without Nix installed, [nix-portable](https://github.com/DavHau/nix-portable) runs all of this from one binary, with no root, daemon or `/nix`:
 
-With a valid PSX-EXE it can now be ran in emulators that can load the PSX-EXE format (mednafen, NO$PSX) or a PSX CD image can be made with something like [https://github.com/Lameguy64/mkpsxiso](https://github.com/Lameguy64/mkpsxiso).
+```
+curl -L -o nix-portable https://github.com/DavHau/nix-portable/releases/latest/download/nix-portable-$(uname -m)
+chmod +x nix-portable
+NP_RUNTIME=bwrap ./nix-portable nix develop github:ChrisRx/yaroze-toolchain#sdk --accept-flake-config
+```
 
-# Resources
+`NP_RUNTIME` is needed because the runtime it picks by itself cannot run `nix develop`, failing with `setting up a private mount namespace: Operation not permitted`. Use `proot` where `bwrap` is not allowed. It keeps its store in `~/.nix-portable`, and it does not work on NixOS, which has no need of it. 
+
+Bring your own emulator to run what it builds.
+
+## Working on this repository
+
+```
+nix develop
+make             # build libyaroze and the samples
+make verify      # check the library against the SDK's libps.a
+make generate    # regenerate lib/ from libps.a
+```
+
+```
+Makefile      builds libyaroze.a and the samples
+yaroze.mk     builds one program; what a project includes
+lib/          generated from libps.a: the crt0, entry points and code members
+ldscripts/    memory layout and section placement
+include/      replaces the SDK headers a current compiler cannot read
+compat/       what the SDK declares and libps lacks
+scripts/      generate.sh and verify.sh
+sdk/          the Net Yaroze SDK, as Sony shipped it
+template/     the project `nix flake init` starts from
+legacy/       the original mipsel-ecoff toolchain, by script or by flake
+```
+
+[docs/internals.md](docs/internals.md) explains how the library is converted and why the link works the way it does.
+
+## Resources
 
  * [PSXDEV](http://www.psxdev.net/) - the community here is great and has collected a lot of helpful info about PSX development
  * [Net Yaroze For Linux](http://www.cebix.net/downloads/yarlinux.pdf)

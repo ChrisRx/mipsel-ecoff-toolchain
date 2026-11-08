@@ -1,0 +1,15 @@
+Read mixed-endian ECOFF. In the SDK's libps.a, puts.o and the *SF*.O helpers
+have big-endian headers around little-endian code, which is its own BFD target,
+so without this any program using them fails to link.
+
+--- a/bfd/config.bfd
++++ b/bfd/config.bfd
+@@ -886,7 +886,7 @@
+     ;;
+   mips*-dec-* | mips*el-*-ecoff*)
+     targ_defvec=ecoff_little_vec
+-    targ_selvecs=ecoff_big_vec
++    targ_selvecs="ecoff_big_vec ecoff_biglittle_vec"
+     ;;
+   mips*-*-ecoff*)
+     targ_defvec=ecoff_big_vec

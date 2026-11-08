@@ -1,0 +1,14 @@
+Word align _end. The resident library's InitHeap takes it as the start of the heap
+and faults on an odd address, so a program whose .bss ends on a stray byte would
+otherwise crash before main.
+
+--- a/ld/scripttempl/mips.sc
++++ b/ld/scripttempl/mips.sc
+@@ -63,6 +63,7 @@
+     *(.bss)
+     *(COMMON)
+   }
++  ${RELOCATING+. = ALIGN(4);}
+   ${RELOCATING+ end = .;}
+   ${RELOCATING+ _end = .;}
+ }

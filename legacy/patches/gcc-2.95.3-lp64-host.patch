@@ -1,0 +1,137 @@
+Add a 64-bit Linux host. This compiler assumes it can read a double across adjacent
+RTL fields, which only holds where those fields are the size of its wide integer.
+Keeping the wide integer at the 32 bits of the target, and copying field by field,
+makes the output match a 32-bit host exactly.
+
+--- a/gcc/configure
++++ b/gcc/configure
+@@ -3631,6 +3631,10 @@
+  			thread_file='single'
+  		fi
+ 		;;
++	x86_64-*-linux-gnu* | aarch64-*-linux-gnu*)
++		xm_file="xm-lp64.h xm-linux.h"
++		xmake_file=x-linux
++		;;
+ 	i[34567]86-*-linux-gnu*)	# Intel 80386's running GNU/Linux
+ 					# aka GNU/Linux C library 6
+ 		xmake_file=x-linux
+--- a/gcc/real.h
++++ b/gcc/real.h
+@@ -467,9 +467,21 @@
+ 
+ #define REAL_VALUE_FROM_CONST_DOUBLE(to, from)		\
+ do { union real_extract u;				\
+-     bcopy ((char *) &CONST_DOUBLE_LOW ((from)), (char *) &u, sizeof u); \
++     CONST_DOUBLE_TO_EXTRACT ((from), u);		\
+      to = u.d; } while (0)
+ 
++/* Copy between a CONST_DOUBLE and a union real_extract one wide int at a time,
++   since on a 64-bit host with a 32-bit wide int the fields of an rtx are wider
++   than what each holds, and so are not contiguous.  */
++#define CONST_DOUBLE_TO_EXTRACT(r, u)					\
++do { int i_;								\
++     for (i_ = 0; i_ < sizeof ((u).i) / sizeof ((u).i[0]); i_++)	\
++       (u).i[i_] = XWINT ((r), 2 + i_); } while (0)
++#define CONST_DOUBLE_FROM_EXTRACT(r, u)					\
++do { int i_;								\
++     for (i_ = 0; i_ < sizeof ((u).i) / sizeof ((u).i[0]); i_++)	\
++       XWINT ((r), 2 + i_) = (u).i[i_]; } while (0)
++
+ /* Return a CONST_DOUBLE with value R and mode M.  */
+ 
+ #define CONST_DOUBLE_FROM_REAL_VALUE(r, m) immed_real_const_1 (r,  m)
+--- a/gcc/varasm.c
++++ b/gcc/varasm.c
+@@ -2121,7 +2121,7 @@
+   rtl_in_saveable_obstack ();
+   r = rtx_alloc (CONST_DOUBLE);
+   PUT_MODE (r, mode);
+-  bcopy ((char *) &u, (char *) &CONST_DOUBLE_LOW (r), sizeof u);
++  CONST_DOUBLE_FROM_EXTRACT (r, u);
+   pop_obstacks ();
+ 
+   /* Don't touch const_double_chain in nested function; see force_const_mem.
+@@ -3249,8 +3249,7 @@
+       if (GET_MODE (x) != VOIDmode)
+ 	{
+ 	  value->mode = GET_MODE (x);
+-	  bcopy ((char *) &CONST_DOUBLE_LOW (x),
+-		 (char *) &value->un.du, sizeof value->un.du);
++	  CONST_DOUBLE_TO_EXTRACT (x, value->un.du);
+ 	}
+       else
+ 	{
+@@ -3673,7 +3672,7 @@
+ 	  if (GET_CODE (x) != CONST_DOUBLE)
+ 	    abort ();
+ 
+-	  bcopy ((char *) &CONST_DOUBLE_LOW (x), (char *) &u, sizeof u);
++	  CONST_DOUBLE_TO_EXTRACT (x, u);
+ 	  assemble_real (u.d, pool->mode);
+ 	  break;
+ 
+--- a/gcc/emit-rtl.c
++++ b/gcc/emit-rtl.c
+@@ -3777,7 +3777,7 @@
+ 	  bzero ((char *) &u, sizeof u);  /* Zero any holes in a structure.  */
+ 	  u.d = i == 0 ? dconst0 : i == 1 ? dconst1 : dconst2;
+ 
+-	  bcopy ((char *) &u, (char *) &CONST_DOUBLE_LOW (tem), sizeof u);
++	  CONST_DOUBLE_FROM_EXTRACT (tem, u);
+ 	  CONST_DOUBLE_MEM (tem) = cc0_rtx;
+ 	  PUT_MODE (tem, mode);
+ 
+--- a/gcc/config/mips/mips.md
++++ b/gcc/config/mips/mips.md
+@@ -10249,7 +10249,7 @@
+ 
+   if (GET_CODE (operands[0]) != CONST_DOUBLE)
+     abort ();
+-  bcopy ((char *) &CONST_DOUBLE_LOW (operands[0]), (char *) &u, sizeof u);
++  CONST_DOUBLE_TO_EXTRACT (operands[0], u);
+   assemble_real (u.d, SFmode);
+   return \"\";
+ }"
+@@ -10266,7 +10266,7 @@
+ 
+   if (GET_CODE (operands[0]) != CONST_DOUBLE)
+     abort ();
+-  bcopy ((char *) &CONST_DOUBLE_LOW (operands[0]), (char *) &u, sizeof u);
++  CONST_DOUBLE_TO_EXTRACT (operands[0], u);
+   assemble_real (u.d, DFmode);
+   return \"\";
+ }"
+--- /dev/null
++++ b/gcc/config/xm-lp64.h
+@@ -0,0 +1,30 @@
++/* Configuration for GNU C-compiler on a 64-bit host with 32-bit int.  */
++
++#define FALSE 0
++#define TRUE 1
++
++#define HOST_BITS_PER_CHAR 8
++#define HOST_BITS_PER_SHORT 16
++#define HOST_BITS_PER_INT 32
++#define HOST_BITS_PER_LONG 64
++#define HOST_BITS_PER_LONGLONG 64
++
++/* The target is 32-bit, and keeping the compiler's wide integer at that width
++   means this host generates exactly what a 32-bit host does.  */
++#define HOST_BITS_PER_WIDE_INT 32
++#define HOST_WIDE_INT int
++
++#include "tm.h"
++
++#define SUCCESS_EXIT_CODE 0
++#define FATAL_EXIT_CODE 33
++
++#ifndef alloca
++#ifdef __GNUC__
++#define alloca __builtin_alloca
++#else
++#include <alloca.h>
++#endif
++#endif
++
++#define POSIX
