@@ -20,8 +20,9 @@ jobs:
         include:
           - os: ubuntu-latest
             system: x86_64-linux
-            # GCC 2.95.3, which has no host entry for macOS.
-            extra: legacy-toolchain
+            # GCC 2.95.3, which has no host entry for macOS, and the same as
+            # WebAssembly modules, which run on any host but are built here.
+            extra: legacy-toolchain legacy-toolchain-wasm
           - os: ubuntu-24.04-arm
             system: aarch64-linux
             extra: legacy-toolchain

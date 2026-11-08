@@ -107,6 +107,11 @@
         inherit pkgs;
         eco2exe = mkEco2exe pkgs;
       };
+      # The same as WebAssembly modules, checked against the native build.
+      mkLegacyWasm = pkgs: import ./legacy/wasm/wasm.nix {
+        inherit pkgs;
+        toolchain = (mkLegacy pkgs).toolchain;
+      };
       isLegacySystem = nixpkgs.lib.hasSuffix "-linux";
       onLegacySystem = system: nixpkgs.lib.optionalAttrs (isLegacySystem system);
 
@@ -229,6 +234,7 @@
         onLegacySystem system {
           legacy-toolchain = (mkLegacy pkgs).toolchain;
           legacy-sdk = (mkLegacy pkgs).sdk;
+          legacy-toolchain-wasm = (mkLegacyWasm pkgs).modules;
         } // rec {
           default = libyaroze;
 
@@ -252,6 +258,7 @@
           legacy = (mkLegacy pkgs).check;
           legacy-output = (mkLegacy pkgs).outputCheck;
           legacy-tcc = (mkLegacy pkgs).tccCheck;
+          legacy-wasm = (mkLegacyWasm pkgs).check;
         }
       );
 

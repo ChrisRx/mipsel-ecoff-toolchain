@@ -1,0 +1,202 @@
+Add a WebAssembly host, wasm32-wasi, and fix two calls that only work where
+a call's arguments are not checked against its callee.
+
+The host is 32-bit and little-endian like the i386, so a wide integer of 32
+bits keeps what the compiler generates the same as on any other host.
+
+insn_gen_function was declared variadic, but its entries, gen_movsi and the
+rest, are not: on WebAssembly a variadic call passes its variable arguments
+through a pointer, so the callee read that pointer as its second operand. It
+is declared without a prototype instead, as genoutput already defines it.
+
+calls.c passes call and call_value as many operands as any target's take,
+more than MIPS's do, which a WebAssembly direct call cannot do. It calls
+them through a pointer, which the build then makes tolerant of the count.
+
+WASI has no processes, so pexecute, by which the driver runs cpp0, cc1, as
+and collect2, writes each command to the file GCC_WASI_PLAN names instead,
+for mipsel-ecoff-gcc to run under a WASI runtime, and reports success.
+
+--- a/gcc/configure
++++ b/gcc/configure
+@@ -3635,6 +3635,10 @@
+ 		xm_file="xm-lp64.h xm-linux.h"
+ 		xmake_file=x-linux
+ 		;;
++	wasm32-*-wasi*)
++		xm_file="xm-wasm32.h xm-linux.h"
++		xmake_file=x-linux
++		;;
+ 	i[34567]86-*-linux-gnu*)	# Intel 80386's running GNU/Linux
+ 					# aka GNU/Linux C library 6
+ 		xmake_file=x-linux
+--- a/gcc/expr.h
++++ b/gcc/expr.h
+@@ -374,7 +374,7 @@
+ #define GEN_FCN(CODE) (*insn_gen_function[(int) (CODE)])
+ #endif
+ 
+-extern rtx (*const insn_gen_function[]) PROTO ((rtx, ...));
++extern rtx (*const insn_gen_function[]) ();
+ 
+ extern optab add_optab;
+ extern optab sub_optab;
+--- a/gcc/expr.c
++++ b/gcc/expr.c
+@@ -163,10 +163,10 @@
+ static rtx enqueue_insn		PROTO((rtx, rtx));
+ static void init_queue		PROTO((void));
+ static int move_by_pieces_ninsns PROTO((unsigned int, int));
+-static void move_by_pieces_1	PROTO((rtx (*) (rtx, ...), enum machine_mode,
++static void move_by_pieces_1	PROTO((rtx (*) (), enum machine_mode,
+ 				       struct move_by_pieces *));
+ static void clear_by_pieces	PROTO((rtx, int, int));
+-static void clear_by_pieces_1	PROTO((rtx (*) (rtx, ...), enum machine_mode,
++static void clear_by_pieces_1	PROTO((rtx (*) (), enum machine_mode,
+ 				       struct clear_by_pieces *));
+ static int is_zeros_p		PROTO((tree));
+ static int mostly_zeros_p	PROTO((tree));
+@@ -1573,7 +1573,7 @@
+ 
+ static void
+ move_by_pieces_1 (genfun, mode, data)
+-     rtx (*genfun) PROTO ((rtx, ...));
++     rtx (*genfun) ();
+      enum machine_mode mode;
+      struct move_by_pieces *data;
+ {
+@@ -2364,7 +2364,7 @@
+ 
+ static void
+ clear_by_pieces_1 (genfun, mode, data)
+-     rtx (*genfun) PROTO ((rtx, ...));
++     rtx (*genfun) ();
+      enum machine_mode mode;
+      struct clear_by_pieces *data;
+ {
+--- a/gcc/calls.c
++++ b/gcc/calls.c
+@@ -440,15 +440,21 @@
+ #if defined (HAVE_call) && defined (HAVE_call_value)
+   if (HAVE_call && HAVE_call_value)
+     {
++      /* Through pointers, since a target's call patterns need not take as
++	 many operands as are passed here, and a host that checks a direct
++	 call's arguments against its callee, WebAssembly, would trap.  */
++      rtx (*volatile call_value) () = gen_call_value;
++      rtx (*volatile call) () = gen_call;
++
+       if (valreg)
+-	emit_call_insn (gen_call_value (valreg,
+-					gen_rtx_MEM (FUNCTION_MODE, funexp),
+-					rounded_stack_size_rtx, next_arg_reg,
+-					NULL_RTX));
++	emit_call_insn ((*call_value) (valreg,
++				       gen_rtx_MEM (FUNCTION_MODE, funexp),
++				       rounded_stack_size_rtx, next_arg_reg,
++				       NULL_RTX));
+       else
+-	emit_call_insn (gen_call (gen_rtx_MEM (FUNCTION_MODE, funexp),
+-				  rounded_stack_size_rtx, next_arg_reg,
+-				  struct_value_size_rtx));
++	emit_call_insn ((*call) (gen_rtx_MEM (FUNCTION_MODE, funexp),
++				 rounded_stack_size_rtx, next_arg_reg,
++				 struct_value_size_rtx));
+     }
+   else
+ #endif
+--- a/libiberty/pexecute.c
++++ b/libiberty/pexecute.c
+@@ -600,9 +600,58 @@
+ 
+ #endif /* MPW */
+ 
++#ifdef __wasi__
++
++#include <stdlib.h>
++
++/* WASI has no processes. Each program the driver would run is written to
++   the file GCC_WASI_PLAN names instead, an argument to a line and a blank
++   line after the last, for the host to run in turn, and reported to have
++   succeeded: the host stops at the first that does not.  */
++
++int
++pexecute (program, argv, this_pname, temp_base, errmsg_fmt, errmsg_arg, flags)
++     const char *program;
++     char * const *argv;
++     const char *this_pname;
++     const char *temp_base;
++     char **errmsg_fmt, **errmsg_arg;
++     int flags;
++{
++  static int last_pid;
++  const char *plan = getenv ("GCC_WASI_PLAN");
++  FILE *f;
++  int i;
++
++  if (plan == 0 || (f = fopen (plan, "a")) == 0)
++    {
++      *errmsg_fmt = "cannot record %s: GCC_WASI_PLAN names no file to write";
++      *errmsg_arg = (char *) program;
++      return -1;
++    }
++  fprintf (f, "%s\n", program);
++  for (i = 1; argv[i] != 0; i++)
++    fprintf (f, "%s\n", argv[i]);
++  fprintf (f, "\n");
++  fclose (f);
++  return ++last_pid;
++}
++
++int
++pwait (pid, status, flags)
++     int pid;
++     int *status;
++     int flags;
++{
++  *status = 0;
++  return pid;
++}
++
++#endif /* __wasi__ */
++
+ /* include for Unix-like environments but not for Dos-like environments */
+ #if ! defined (__MSDOS__) && ! defined (OS2) && ! defined (MPW) \
+-    && ! (defined (_WIN32) && ! defined (_UWIN))
++    && ! (defined (_WIN32) && ! defined (_UWIN)) && ! defined (__wasi__)
+ 
+ extern int execv ();
+ extern int execvp ();
+--- /dev/null
++++ b/gcc/config/xm-wasm32.h
+@@ -0,0 +1,30 @@
++/* Configuration for GNU C-compiler on WebAssembly with WASI, 32-bit and
++   little-endian like the i386, with which a wide integer of 32 bits keeps
++   what it generates the same.  */
++
++#define FALSE 0
++#define TRUE 1
++
++#define HOST_BITS_PER_CHAR 8
++#define HOST_BITS_PER_SHORT 16
++#define HOST_BITS_PER_INT 32
++#define HOST_BITS_PER_LONG 32
++#define HOST_BITS_PER_LONGLONG 64
++
++#define HOST_BITS_PER_WIDE_INT 32
++#define HOST_WIDE_INT int
++
++#include "tm.h"
++
++#define SUCCESS_EXIT_CODE 0
++#define FATAL_EXIT_CODE 33
++
++#ifndef alloca
++#ifdef __GNUC__
++#define alloca __builtin_alloca
++#else
++#include <alloca.h>
++#endif
++#endif
++
++#define POSIX
