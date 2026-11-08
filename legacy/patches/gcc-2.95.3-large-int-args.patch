@@ -1,0 +1,32 @@
+Pass large_int its second argument. It is unused, so these calls were harmless,
+but stricter compilers such as TinyCC reject them.
+
+--- a/gcc/config/mips/mips.c
++++ b/gcc/config/mips/mips.c
+@@ -5770,7 +5770,7 @@
+ 		 split.  */
+ 	      /* ??? There is no DImode ori immediate pattern, so we can only
+ 		 do this for 32 bit code.  */
+-	      if (large_int (gp_offset_rtx)
++	      if (large_int (gp_offset_rtx, VOIDmode)
+ 		  && GET_MODE (base_reg_rtx) == SImode)
+ 		{
+ 		  insn = emit_move_insn (base_reg_rtx,
+@@ -5988,7 +5988,7 @@
+ 		 split.  */
+ 	      /* ??? There is no DImode ori immediate pattern, so we can only
+ 		 do this for 32 bit code.  */
+-	      if (large_int (fp_offset_rtx)
++	      if (large_int (fp_offset_rtx, VOIDmode)
+ 		  && GET_MODE (base_reg_rtx) == SImode)
+ 		{
+ 		  insn = emit_move_insn (base_reg_rtx,
+@@ -6519,7 +6519,7 @@
+ 		 split.  */
+ 	      /* ??? There is no DImode ori immediate pattern, so we can only
+ 		 do this for 32 bit code.  */
+-	      if (large_int (tsize_rtx) && GET_MODE (tmp_rtx) == SImode)
++	      if (large_int (tsize_rtx, VOIDmode) && GET_MODE (tmp_rtx) == SImode)
+ 		{
+ 		  insn = emit_move_insn (tmp_rtx,
+ 					 GEN_INT (tsize & 0xffff0000));

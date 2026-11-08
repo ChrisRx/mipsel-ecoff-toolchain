@@ -1,0 +1,54 @@
+name: Cache toolchain
+
+# Keeps the cross toolchain and psxsdk commands in the binary cache the flake names,
+# so a first use downloads them rather than compiling GCC. They only change when
+# the flake or its lock does.
+on:
+  push:
+    branches: [main]
+    paths:
+      - flake.nix
+      - flake.lock
+      - .github/workflows/cache.yaml
+  workflow_dispatch:
+
+jobs:
+  cache:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            system: x86_64-linux
+            # GCC 2.95.3, which has no host entry for macOS.
+            extra: legacy-toolchain
+          - os: ubuntu-24.04-arm
+            system: aarch64-linux
+            extra: legacy-toolchain
+          - os: macos-latest
+            system: aarch64-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      # Only what is named below is pushed. The action's own push would also take
+      # whatever else gets built, and libyaroze and legacy-sdk, which hold Sony's
+      # headers, are never to be in the cache.
+      - uses: cachix/cachix-action@v16
+        with:
+          name: psxsdk
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          skipPush: true
+      # Pinned so the cache keeps them, with only the latest revision kept, so a
+      # toolchain that has been replaced stops taking up space.
+      - name: Build and push
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: |
+          for pkg in gcc binutils eco2exe ecoff-tools yaroze ${{ matrix.extra }}; do
+            nix build --no-link --print-out-paths --accept-flake-config ".#$pkg" \
+              | xargs cachix push psxsdk
+            out=$(nix build --no-link --print-out-paths --accept-flake-config ".#$pkg.out")
+            cachix pin psxsdk "yaroze-$pkg-${{ matrix.system }}" "$out" --keep-revisions 1
+          done
