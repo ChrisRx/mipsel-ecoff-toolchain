@@ -26,6 +26,7 @@ let
     tar xzf ${gccSrc}
     patch -p1 -d binutils-2.22 < ${../patches/binutils-2.22-mixed-endian-ecoff.patch}
     patch -p1 -d binutils-2.22 < ${../patches/binutils-2.22-align-end.patch}
+    patch -p1 -d binutils-2.22 < ${../patches/binutils-2.22-ecoff-deterministic-armap.patch}
     patch -p1 -d gcc-2.95.3 < ${../patches/gcc-2.95.3-obstack-lvalue.patch}
     patch -p1 -d gcc-2.95.3 < ${../patches/gcc-2.95.3-no-gofast.patch}
     patch -p1 -d gcc-2.95.3 < ${../patches/gcc-2.95.3-libgcc-no-libc.patch}
@@ -129,11 +130,12 @@ let
       done
       chmod +x $out/bin/*
 
-      # libgcc, each multilib of it, built by the modules through the driver.
+      # libgcc, each multilib of it, built by the modules through the driver,
+      # with archives the same from every build, as toolchain.nix makes them.
       export HOME=$PWD # wasmtime keeps a cache there
       make -C build-gcc/gcc stmp-multilib MAKEINFO=true CC=true HOST_CC="${buildCC}" \
         GCC_FOR_TARGET=$out/bin/mipsel-ecoff-gcc \
-        AR_FOR_TARGET=$out/bin/mipsel-ecoff-ar RANLIB_FOR_TARGET=$out/bin/mipsel-ecoff-ranlib
+        AR_FOR_TARGET=$out/bin/mipsel-ecoff-ar AR_FLAGS_FOR_TARGET=rcD RANLIB_FOR_TARGET=true
       for dir in . eb mips3 single soft-float; do
         mkdir -p $lib/$dir
         cp build-gcc/gcc/$dir/libgcc.a $lib/$dir/libgcc.a

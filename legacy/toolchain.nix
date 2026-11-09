@@ -28,6 +28,14 @@ let
 
   platform = "--build=${stdenv.buildPlatform.config} --host=${stdenv.hostPlatform.config} --target=mipsel-ecoff";
 
+  # libgcc's archives the same from every build: ar's D leaves out the dates,
+  # owners and modes of the members and, with the binutils patch, of the
+  # index, and ar writes the index as it adds the members, so ranlib, which
+  # would date it again, has nothing to do. They go at the end of
+  # gcc/Makefile, where the last assignment wins, since the top-level
+  # Makefile passes no command-line variables down (MAKEOVERRIDES=).
+  deterministicAr = "printf '%s\\n' 'AR_FLAGS_FOR_TARGET = rcD' 'RANLIB_FOR_TARGET = true' >> gcc/Makefile";
+
   # The compiler and binutils alone, which is what goes in the binary cache, so
   # none of Sony's files may end up in the output, which the end of the install
   # checks. Nothing of the SDK goes into building it either: see the
@@ -57,6 +65,7 @@ let
       tar xzf ${gccSrc}${lib.optionalString cxx "\ntar xzf ${gxxSrc}"}
       patch -p1 -d binutils-2.22 < ${./patches/binutils-2.22-mixed-endian-ecoff.patch}
       patch -p1 -d binutils-2.22 < ${./patches/binutils-2.22-align-end.patch}
+      patch -p1 -d binutils-2.22 < ${./patches/binutils-2.22-ecoff-deterministic-armap.patch}
       patch -p1 -d gcc-2.95.3 < ${./patches/gcc-2.95.3-obstack-lvalue.patch}
       patch -p1 -d gcc-2.95.3 < ${./patches/gcc-2.95.3-no-gofast.patch}
       patch -p1 -d gcc-2.95.3 < ${./patches/gcc-2.95.3-libgcc-no-libc.patch}
@@ -87,6 +96,7 @@ let
         CC="${hostCC}" CFLAGS= ../gcc-2.95.3/configure ${platform} --prefix=$out \
           --enable-languages=c${lib.optionalString cxx ",c++"} --disable-nls --with-gnu-as --with-gnu-ld
         sed -i 's/^ALL_TARGET_MODULES/#&/; s/^INSTALL_TARGET_MODULES/#&/' Makefile
+        ${deterministicAr}
         make -j$NIX_BUILD_CORES MAKEINFO=true CC="${hostCC}" CFLAGS=
       )
 
