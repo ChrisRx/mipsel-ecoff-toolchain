@@ -1,0 +1,27 @@
+Write the ECOFF archive index with a zero date in deterministic mode, as
+ar D asks for. The generic archive code already does, but ECOFF writes its
+index itself, dated a minute after the archive file, so archives built at
+different times differ even with D. The date marks nothing that matters
+to GNU ld, which tells an out-of-date index by its name, so without D the
+index is dated as before.
+
+--- a/bfd/ecoff.c
++++ b/bfd/ecoff.c
+@@ -3063,9 +3063,14 @@
+      complain that the index is out of date.  Actually, the Ultrix
+      linker just checks the archive name; the GNU linker may check the
+      date.  */
+-  stat (abfd->filename, &statbuf);
+-  _bfd_ar_spacepad (hdr.ar_date, sizeof (hdr.ar_date), "%ld",
+-		    (long) (statbuf.st_mtime + 60));
++  if ((abfd->flags & BFD_DETERMINISTIC_OUTPUT) == 0)
++    {
++      stat (abfd->filename, &statbuf);
++      _bfd_ar_spacepad (hdr.ar_date, sizeof (hdr.ar_date), "%ld",
++			(long) (statbuf.st_mtime + 60));
++    }
++  else
++    _bfd_ar_spacepad (hdr.ar_date, sizeof (hdr.ar_date), "%ld", 0L);
+ 
+   /* The DECstation uses zeroes for the uid, gid and mode of the
+      armap.  */

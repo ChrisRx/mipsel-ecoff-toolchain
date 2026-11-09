@@ -77,6 +77,7 @@ WASI has no processes, so the driver cannot run `cpp0`, `cc1`, `as` and `ld` its
  * `gcc-2.95.3-libgcc-no-libc` builds `libgcc` without the SDK's headers, whose `LONG_MIN` breaks converting a `double` to a `long long`.
  * `binutils-2.22-mixed-endian-ecoff` reads `puts.o` and the `*SF*.O` helpers in `libps.a`, which have big-endian headers around little-endian code.
  * `binutils-2.22-align-end` word aligns `_end`, since libps's `InitHeap` faults on an odd address before `main` runs.
+ * `binutils-2.22-ecoff-deterministic-armap` dates an ECOFF archive's index 0 under `ar D`, which `libgcc` is archived with, so that two builds of the toolchain are the same to the byte. The `ar` it installs still dates the index without `D`.
 
 The last two, the GOFAST and `libgcc` patches, and `-lps` ahead of `-lgcc`, fix problems that the script below still has: programs using floats, `puts` or `long long` conversions, or whose `.bss` ends on a stray byte, can fail to link or crash.
 
@@ -121,7 +122,7 @@ nix build .#legacy-toolchain-gcc3        # the toolchain
 nix build .#legacy-toolchain-gcc3-dist   # as an archive
 ```
 
-None of the Net Yaroze patches above apply to it, and Binutils needs none. GCC needs these, each explained at the top of its file:
+None of the Net Yaroze patches above apply to it. Binutils has only `binutils-2.23.2-ecoff-deterministic-armap`, the same as 2.22's, and `libgcc`'s assembly is assembled through a pipe, since a temporary file leaves its random name in each object. GCC needs these, each explained at the top of its file:
 
  * `gcc-3.2.3-ecoff-unaligned-ops` gives non-ELF MIPS targets the assembler syntax for unaligned data. Without it, the frame tables that `-g` and `-fexceptions` bring in abort the compiler while it builds `libgcc`, on any host: GCC 3.2.3 cannot build itself for `mipsel-ecoff` as released.
  * `gcc-3.2.3-ecoff-no-mips3-multilib` leaves out the `-mips3` `libgcc`. With `-mips3` this compiler makes pointers 64 bits, which ECOFF has no relocation for.

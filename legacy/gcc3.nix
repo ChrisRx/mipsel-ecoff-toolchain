@@ -25,6 +25,13 @@ let
 
   platform = "--build=${pkgs.stdenv.buildPlatform.config} --host=${pkgs.stdenv.hostPlatform.config} --target=mipsel-ecoff";
 
+  # libgcc the same from every build. Its archives as toolchain.nix makes
+  # them, and for the same reason at the end of gcc/Makefile, but with the
+  # whole command, since this GCC puts rc after AR_FLAGS_FOR_TARGET. And its
+  # members from mips16.S assembled through a pipe: through a temporary file,
+  # as records the file's random name in each.
+  deterministicLibgcc = "printf '%s\\n' 'AR_CREATE_FOR_TARGET = $(AR_FOR_TARGET) rcD' 'RANLIB_FOR_TARGET = true' 'TARGET_LIBGCC2_CFLAGS += -pipe' >> gcc/Makefile";
+
   toolchain = pkgs.stdenvNoCC.mkDerivation {
     pname = "mipsel-ecoff-toolchain";
     inherit version;
@@ -40,6 +47,7 @@ let
 
       tar xzf ${binutilsSrc}
       tar xzf ${gccSrc}
+      patch -p1 -d binutils-${binutilsVersion} < ${./patches/binutils-2.23.2-ecoff-deterministic-armap.patch}
       patch -p1 -d gcc-${version} < ${./patches/gcc-3.2.3-ecoff-unaligned-ops.patch}
       patch -p1 -d gcc-${version} < ${./patches/gcc-3.2.3-ecoff-no-mips3-multilib.patch}
       patch -p1 -d gcc-${version} < ${./patches/gcc-3.2.3-real-sign-extend.patch}
@@ -68,6 +76,7 @@ let
         # There are no target headers for fixincludes to fix, and it does not
         # build without the host's C library anyway.
         sed -i 's/^STMP_FIXINC = .*/STMP_FIXINC =/; s/^STMP_FIXPROTO = .*/STMP_FIXPROTO =/' gcc/Makefile
+        ${deterministicLibgcc}
         make -j$NIX_BUILD_CORES MAKEINFO=true CC="${hostCC}" CFLAGS=
       )
 
