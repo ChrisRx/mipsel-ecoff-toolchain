@@ -21,13 +21,24 @@ Use 2.95.3 for the Net Yaroze: the SDK expects it, and only it has the fixes the
 
 For C++, there is a third: 2.95.3 again, with the same patches, and C++ as well (`nix build .#legacy-toolchain-cxx`, and `.#legacy-toolchain-cxx-dist` for its archive). It is separate so that the C toolchain, and everything checked against it, stays as it is. See [C++](#c) below.
 
-An archive, `mipsel-ecoff-gcc-VERSION-SYSTEM.tar.gz`, or `mipsel-ecoff-gcc-g++-2.95.3-SYSTEM.tar.gz` with C++, 6 to 7 MB, unpacks anywhere on a Linux host with the same CPU:
+### Downloads
+
+Each archive, 6 to 7 MB, unpacks anywhere on a Linux host with the same CPU, with nothing to install. Next to each is its SHA-256, at the same URL with `.sha256` added.
+
+| | x86_64 Linux | aarch64 Linux |
+|---|---|---|
+| GCC 2.95.3, for the Net Yaroze | [mipsel-ecoff-gcc-2.95.3-x86_64-linux.tar.gz](https://files.yaroze.dev/toolchains/mipsel-ecoff-gcc-2.95.3-x86_64-linux.tar.gz) | [mipsel-ecoff-gcc-2.95.3-aarch64-linux.tar.gz](https://files.yaroze.dev/toolchains/mipsel-ecoff-gcc-2.95.3-aarch64-linux.tar.gz) |
+| GCC 2.95.3 with C++ | [mipsel-ecoff-gcc-g++-2.95.3-x86_64-linux.tar.gz](https://files.yaroze.dev/toolchains/mipsel-ecoff-gcc-g++-2.95.3-x86_64-linux.tar.gz) | [mipsel-ecoff-gcc-g++-2.95.3-aarch64-linux.tar.gz](https://files.yaroze.dev/toolchains/mipsel-ecoff-gcc-g++-2.95.3-aarch64-linux.tar.gz) |
+| GCC 3.2.3, for `mipsel-ecoff` in general | [mipsel-ecoff-gcc-3.2.3-x86_64-linux.tar.gz](https://files.yaroze.dev/toolchains/mipsel-ecoff-gcc-3.2.3-x86_64-linux.tar.gz) | [mipsel-ecoff-gcc-3.2.3-aarch64-linux.tar.gz](https://files.yaroze.dev/toolchains/mipsel-ecoff-gcc-3.2.3-aarch64-linux.tar.gz) |
 
 ```
+curl -LO https://files.yaroze.dev/toolchains/mipsel-ecoff-gcc-2.95.3-x86_64-linux.tar.gz
 tar xzf mipsel-ecoff-gcc-2.95.3-x86_64-linux.tar.gz
 export PATH=$PWD/mipsel-ecoff-gcc-2.95.3/bin:$PATH
 mipsel-ecoff-gcc -O2 -msoft-float -c hello.c
 ```
+
+CI builds them from this flake and publishes them once their checks pass. A new build replaces the last: these toolchains are not meant to change, so one only corrects the build before it.
 
 It has the compiler, Binutils, `libgcc` and the licenses, but nothing of the SDK, and no C library: link with `-nostdlib` and your own startup code, or a C library of your own.
 

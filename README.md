@@ -15,7 +15,15 @@ For other little-endian MIPS work with ECOFF objects, such as an R3000 simulator
  * **GCC 2.95.3 and Binutils 2.22**, the compiler the Net Yaroze SDK was made for and patched for it. Use this one for the Net Yaroze. It also comes with C++, as a toolchain of its own.
  * **GCC 3.2.3 and Binutils 2.23.2**, the last releases that support the target, with no Net Yaroze patches.
 
-[legacy/](legacy/README.md#which-toolchain) has the differences and how to get them.
+For x86_64 Linux, with the aarch64 builds and the C++ one in [legacy/](legacy/README.md#downloads):
+
+```
+curl -LO https://files.yaroze.dev/toolchains/mipsel-ecoff-gcc-3.2.3-x86_64-linux.tar.gz
+tar xzf mipsel-ecoff-gcc-3.2.3-x86_64-linux.tar.gz
+export PATH=$PWD/mipsel-ecoff-gcc-3.2.3/bin:$PATH
+```
+
+Use `mipsel-ecoff-gcc-2.95.3` in place of `3.2.3` for the Net Yaroze. [legacy/](legacy/README.md#which-toolchain) has the differences.
 
 ## Writing your own program
 
