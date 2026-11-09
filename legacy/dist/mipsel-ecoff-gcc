@@ -1,0 +1,20 @@
+#!/bin/sh
+# A compiler driver, wherever this archive was unpacked: mipsel-ecoff-gcc, or
+# mipsel-ecoff-cpp where there is one, which runs the program of its own name
+# in libexec. GCC looks for its programs under the prefix it was built with,
+# so this points it at the ones next to it: GCC_EXEC_PREFIX for cpp0, cc1,
+# collect2, its headers and libgcc, and COMPILER_PATH for as and ld.
+self=$0
+while [ -h "$self" ]; do
+	link=$(readlink "$self")
+	case $link in
+	/*) self=$link ;;
+	*) self=$(dirname "$self")/$link ;;
+	esac
+done
+prefix=$(cd "$(dirname "$self")/.." && pwd) || exit
+
+GCC_EXEC_PREFIX=$prefix/lib/gcc-lib/
+COMPILER_PATH=$prefix/mipsel-ecoff/bin
+export GCC_EXEC_PREFIX COMPILER_PATH
+exec "$prefix/libexec/$(basename "$self")" "$@"

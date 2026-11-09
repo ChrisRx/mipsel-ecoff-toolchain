@@ -74,6 +74,17 @@ let
     '';
   };
 
+  # The host compiler for the toolchains: static programs, and no optimizer to
+  # exploit undefined behavior in code from the 1990s. It is a script because
+  # libtool removes -static from a command line.
+  staticCC = pkgs.writeShellScript "tcc-static" ''
+    exec ${tcc}/bin/tcc -static -w ${wcharFix} "$@"
+  '';
+
+  # TinyCC defines wchar_t as int on arm64, where it is unsigned and musl's headers
+  # say so. Only the host's is affected: GCC uses the target's.
+  wcharFix = lib.optionalString pkgs.stdenv.hostPlatform.isAarch64 "'-D__WCHAR_TYPE__=unsigned'";
+
   # What the fixed point is from one seed, under a prefix that does not depend on
   # the seed the way a store path would.
   fixedPoint = args: stages (args // {
@@ -107,5 +118,5 @@ let
   '';
 in
 {
-  inherit tcc check;
+  inherit tcc staticCC check;
 }

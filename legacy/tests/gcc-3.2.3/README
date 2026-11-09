@@ -1,0 +1,24 @@
+What GCC 3.2.3 generates, which the legacy-gcc3-output check holds the
+toolchain to: ../output.c at -O0 and -O2 with -msoft-float, and a hash of
+the code in each member of every libgcc, from ../libgcc.sh, one line per
+member, with its multilib's directory first.
+
+They came from a separate build of the same sources, for a 32-bit x86
+host, by nixpkgs' GCC rather than TinyCC, with the patches in gcc3.nix and
+gcc-2.95.3-obstack-lvalue, which a current GCC needs. It is configured as
+gcc3.nix configures it, with --build and --host i686-pc-linux-gnu, and CC
+set to gcc -std=gnu89 -fcommon -O1 -w -fno-strict-aliasing -fwrapv. A
+64-bit host's output matched it once the real-sign-extend patch was in,
+for the assembly as well as the code.
+
+To regenerate after deliberately changing the compiler, run, in a
+directory holding output.c:
+
+    mipsel-ecoff-gcc -O0 -msoft-float -S -o output.O0.s output.c
+    mipsel-ecoff-gcc -O2 -msoft-float -S -o output.O2.s output.c
+
+and for libgcc.expected, for each of . eb single single/eb soft-float
+soft-float/eb, in an empty directory:
+
+    sh libgcc.sh mipsel-ecoff-objdump mipsel-ecoff-ar \
+        PREFIX/lib/gcc-lib/mipsel-ecoff/3.2.3/DIR/libgcc.a | sed "s|^|DIR |"

@@ -8,6 +8,15 @@ The SDK shipped for `mipsel-ecoff`, a target long since removed from GCC, but th
 
 [psxsdk](https://github.com/ChrisRx/psxsdk) also compiles Net Yaroze C projects, with [its `yaroze` command](https://chrisrx.github.io/psxsdk/tools/yaroze/#c-projects) and nothing else but Go to install, and does a ton more: writing programs in Go, converting art, sound and models to the console's formats, building discs, an emulator, [playable examples](https://chrisrx.github.io/psxsdk/examples/) and [Sony's manuals](https://chrisrx.github.io/psxsdk/manuals/). This repository is for building with GCC specifically.
 
+## Just a mipsel-ecoff toolchain?
+
+For other little-endian MIPS work with ECOFF objects, such as an R3000 simulator like vmips, there are two native toolchains, each a static build with nothing to install that unpacks anywhere on Linux:
+
+ * **GCC 2.95.3 and Binutils 2.22**, the compiler the Net Yaroze SDK was made for and patched for it. Use this one for the Net Yaroze. It also comes with C++, as a toolchain of its own.
+ * **GCC 3.2.3 and Binutils 2.23.2**, the last releases that support the target, with no Net Yaroze patches.
+
+[legacy/](legacy/README.md#which-toolchain) has the differences and how to get them.
+
 ## Writing your own program
 
 You do not need a copy of this repository to build against the SDK. Start a project from the template:
@@ -37,6 +46,9 @@ Nix is the supported way to build here. A flake provides each environment, so no
 nix develop             # work on this repo: toolchain, psxsdk commands, make
 nix develop .#sdk       # write your own program against a prebuilt SDK
 nix develop .#legacy    # the original mipsel-ecoff GCC 2.95.3, Linux only, see legacy/
+nix build .#legacy-toolchain-dist        # GCC 2.95.3 as an archive to use without Nix
+nix build .#legacy-toolchain-cxx-dist    # GCC 2.95.3 with C++
+nix build .#legacy-toolchain-gcc3-dist   # GCC 3.2.3
 ```
 
 The `mipsel-none-elf` toolchain and the psxsdk commands come from a binary cache named in the flake, so Nix asks once whether to trust its settings. Say yes, or pass `--accept-flake-config`, or the toolchain compiles locally instead. On a multi-user install this also needs your user in `trusted-users`. `nix build .#gcc` builds just the compiler; `nix build .#libyaroze` builds the SDK tree that `YAROZE_PREFIX` points at.

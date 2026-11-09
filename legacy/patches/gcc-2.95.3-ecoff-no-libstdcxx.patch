@@ -1,0 +1,32 @@
+Link C++ programs without libstdc++ and libm on mips-ecoff. The C++
+toolchain builds no target libraries, since libstdc++ needs a C library,
+and the C++ runtime, new, delete, typeinfo and exceptions, is in libgcc.
+g++ otherwise adds -lstdc++ -lm to every link, which then fails. An empty
+LIBSTDCXX would still be passed to the linker, so g++spec.c skips it.
+Only the C++ toolchain is built with this.
+
+--- a/gcc/config/mips/ecoff.h
++++ b/gcc/config/mips/ecoff.h
+@@ -28,6 +28,11 @@
+ /* Use memcpy, et. al., rather than bcopy.  */
+ #define TARGET_MEM_FUNCTIONS
+ 
++/* There is no C++ library or math library to link: the C++ runtime is
++   in libgcc.  */
++#define LIBSTDCXX ""
++#define MATH_LIBRARY ""
++
+ /* Don't assume anything about startfiles.  The linker script will load the
+    appropriate startfiles.  */
+ #define STARTFILE_SPEC ""
+--- a/gcc/cp/g++spec.c
++++ b/gcc/cp/g++spec.c
+@@ -234,7 +234,7 @@
+   }
+ 
+   /* Add `-lstdc++' if we haven't already done so.  */
+-  if (library)
++  if (library && LIBSTDCXX[0] != '\0')
+     {
+       arglist[j++] = LIBSTDCXX;
+       added_libraries++;

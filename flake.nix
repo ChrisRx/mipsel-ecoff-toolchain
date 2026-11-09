@@ -107,6 +107,9 @@
         inherit pkgs;
         eco2exe = mkEco2exe pkgs;
       };
+      # GCC 3.2.3 and Binutils 2.23.2, the last releases with mipsel-ecoff,
+      # for the target in general rather than the Net Yaroze.
+      mkGcc3 = pkgs: import ./legacy/gcc3.nix { inherit pkgs; };
       # The same as WebAssembly modules, checked against the native build.
       mkLegacyWasm = pkgs: import ./legacy/wasm/wasm.nix {
         inherit pkgs;
@@ -235,6 +238,11 @@
           legacy-toolchain = (mkLegacy pkgs).toolchain;
           legacy-sdk = (mkLegacy pkgs).sdk;
           legacy-toolchain-wasm = (mkLegacyWasm pkgs).modules;
+          legacy-toolchain-dist = (mkLegacy pkgs).distArchive;
+          legacy-toolchain-cxx = (mkLegacy pkgs).toolchainCxx;
+          legacy-toolchain-cxx-dist = (mkLegacy pkgs).distCxxArchive;
+          legacy-toolchain-gcc3 = (mkGcc3 pkgs).toolchain;
+          legacy-toolchain-gcc3-dist = (mkGcc3 pkgs).distArchive;
         } // rec {
           default = libyaroze;
 
@@ -258,6 +266,11 @@
           legacy = (mkLegacy pkgs).check;
           legacy-output = (mkLegacy pkgs).outputCheck;
           legacy-tcc = (mkLegacy pkgs).tccCheck;
+          legacy-dist = (mkLegacy pkgs).distCheck;
+          legacy-cxx-output = (mkLegacy pkgs).cxxOutputCheck;
+          legacy-cxx-dist = (mkLegacy pkgs).distCxxCheck;
+          legacy-gcc3-output = (mkGcc3 pkgs).outputCheck;
+          legacy-gcc3-dist = (mkGcc3 pkgs).distCheck;
           legacy-wasm = (mkLegacyWasm pkgs).check;
         }
       );

@@ -1,0 +1,26 @@
+Collect C++ constructors and destructors with collect2 on mips-ecoff, as
+GCC does on the other ECOFF MIPS targets, Ultrix and OSF/1. Without it the
+compiler only marks each in a stabs set, __CTOR_LIST__, which nothing on
+ECOFF gathers, so libgcc's empty list is used and global constructors
+never run. collect2 instead runs nm on the linked program, writes a table
+of the _GLOBAL_$I$ and _GLOBAL_$D$ functions it finds, and links again,
+and __main runs them. Only the C++ toolchain is built with this.
+
+--- a/gcc/configure
++++ b/gcc/configure
+@@ -4925,6 +4925,7 @@
+ 			tm_file="${tm_file} dbx.h"
+ 		fi
+ 		tmake_file=mips/t-ecoff
++		use_collect2=yes
+ 		;;
+ 	mips-*-ecoff*)
+ 		tm_file="gofast.h mips/ecoff.h"
+@@ -4932,6 +4933,7 @@
+ 			tm_file="${tm_file} dbx.h"
+ 		fi
+ 		tmake_file=mips/t-ecoff
++		use_collect2=yes
+ 		;;
+ 	mipsel-*-elf*)
+ 		tm_file="mips/elfl.h libgloss.h"

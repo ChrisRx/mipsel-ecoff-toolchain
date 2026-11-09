@@ -1,0 +1,46 @@
+Sign-extend the words of a floating-point constant. assemble_real makes a
+CONST_INT of each 32-bit word as REAL_VALUE_TO_TARGET_* leaves it in a
+host long, which on a 64-bit host is the word zero-extended, where RTL
+expects the sign-extended form a 32-bit host has. The object code is the
+same either way, but the assembly is not: .word 3221487616 rather than
+-1073479680. Truncating to SImode makes the output match a 32-bit host's
+exactly.
+
+--- a/gcc/varasm.c
++++ b/gcc/varasm.c
+@@ -2032,25 +2032,25 @@
+ 	{
+ 	case SFmode:
+ 	  REAL_VALUE_TO_TARGET_SINGLE (d, l);
+-	  assemble_integer (GEN_INT (l), 4, align, 1);
++	  assemble_integer (GEN_INT (trunc_int_for_mode (l, SImode)), 4, align, 1);
+ 	  break;
+ 	case DFmode:
+ 	  REAL_VALUE_TO_TARGET_DOUBLE (d, data);
+-	  assemble_integer (GEN_INT (data[0]), 4, align, 1);
+-	  assemble_integer (GEN_INT (data[1]), 4, nalign, 1);
++	  assemble_integer (GEN_INT (trunc_int_for_mode (data[0], SImode)), 4, align, 1);
++	  assemble_integer (GEN_INT (trunc_int_for_mode (data[1], SImode)), 4, nalign, 1);
+ 	  break;
+ 	case XFmode:
+ 	  REAL_VALUE_TO_TARGET_LONG_DOUBLE (d, data);
+-	  assemble_integer (GEN_INT (data[0]), 4, align, 1);
+-	  assemble_integer (GEN_INT (data[1]), 4, nalign, 1);
+-	  assemble_integer (GEN_INT (data[2]), 4, nalign, 1);
++	  assemble_integer (GEN_INT (trunc_int_for_mode (data[0], SImode)), 4, align, 1);
++	  assemble_integer (GEN_INT (trunc_int_for_mode (data[1], SImode)), 4, nalign, 1);
++	  assemble_integer (GEN_INT (trunc_int_for_mode (data[2], SImode)), 4, nalign, 1);
+ 	  break;
+ 	case TFmode:
+ 	  REAL_VALUE_TO_TARGET_LONG_DOUBLE (d, data);
+-	  assemble_integer (GEN_INT (data[0]), 4, align, 1);
+-	  assemble_integer (GEN_INT (data[1]), 4, nalign, 1);
+-	  assemble_integer (GEN_INT (data[2]), 4, nalign, 1);
+-	  assemble_integer (GEN_INT (data[3]), 4, nalign, 1);
++	  assemble_integer (GEN_INT (trunc_int_for_mode (data[0], SImode)), 4, align, 1);
++	  assemble_integer (GEN_INT (trunc_int_for_mode (data[1], SImode)), 4, nalign, 1);
++	  assemble_integer (GEN_INT (trunc_int_for_mode (data[2], SImode)), 4, nalign, 1);
++	  assemble_integer (GEN_INT (trunc_int_for_mode (data[3], SImode)), 4, nalign, 1);
+ 	  break;
+ 	default:
+ 	  abort ();
