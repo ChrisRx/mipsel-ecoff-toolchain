@@ -1,0 +1,16 @@
+Build libgcc without the mips3 multilib. With -mips3 this compiler makes
+pointers 64 bits on mips-ecoff, and ECOFF has no 64-bit relocation, so
+the assembler rejects libgcc's first pointer (BFD_RELOC_64 in __main) on
+any host. The other multilibs are what an R3000 target needs.
+
+--- a/gcc/config/mips/t-ecoff
++++ b/gcc/config/mips/t-ecoff
+@@ -41,6 +41,6 @@
+
+ # Build the libraries for both hard and soft floating point
+
+-MULTILIB_OPTIONS = msoft-float/msingle-float EL/EB mips1/mips3
+-MULTILIB_DIRNAMES = soft-float single el eb mips1 mips3
++MULTILIB_OPTIONS = msoft-float/msingle-float EL/EB
++MULTILIB_DIRNAMES = soft-float single el eb
+ MULTILIB_MATCHES = msingle-float=m4650

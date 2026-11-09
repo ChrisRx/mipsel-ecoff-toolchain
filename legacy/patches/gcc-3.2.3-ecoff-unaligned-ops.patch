@@ -1,0 +1,18 @@
+Give non-ELF MIPS targets a way to emit unaligned data. target-def.h only
+has .2byte and .4byte for ELF, so mips-ecoff has none, and the frame
+tables that -g and -fexceptions together bring in abort the compiler in
+assemble_integer, at varasm.c:2013, while it builds libgcc. That happens
+on any host. IRIX 5's .align 0 before .half or .word, which turns off the
+assembler's automatic alignment, works on ECOFF as well.
+
+--- a/gcc/config/mips/mips.c
++++ b/gcc/config/mips/mips.c
+@@ -464,7 +464,7 @@
+ #undef TARGET_ASM_INTEGER
+ #define TARGET_ASM_INTEGER mips_assemble_integer
+
+-#if TARGET_IRIX5 && !TARGET_IRIX6
++#if (TARGET_IRIX5 && !TARGET_IRIX6) || !defined (OBJECT_FORMAT_ELF)
+ #undef TARGET_ASM_UNALIGNED_HI_OP
+ #define TARGET_ASM_UNALIGNED_HI_OP "\t.align 0\n\t.half\t"
+ #undef TARGET_ASM_UNALIGNED_SI_OP

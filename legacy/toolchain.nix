@@ -3,7 +3,7 @@
 # this directory.
 { pkgs, eco2exe }:
 let
-  inherit (pkgs) stdenv;
+  inherit (pkgs) stdenv lib;
 
   tinycc = import ./tcc.nix { inherit pkgs; };
 
@@ -17,16 +17,14 @@ let
     sha256 = "12c26349fc7bb738f84b9826c61e103203187ca2d46f08b82e61e21fcbc6e3e6";
   };
 
-  # TinyCC has no optimizer to exploit undefined behavior in code from the 1990s,
-  # and stays where it is pinned, so this does not move with a current GCC. It is
-  # a script because libtool removes -static from a command line.
-  hostCC = pkgs.writeShellScript "tcc-static" ''
-    exec ${tinycc.tcc}/bin/tcc -static -w ${wcharFix} "$@"
-  '';
+  # The C++ front end and its runtime, unpacked over the same tree.
+  gxxSrc = pkgs.fetchurl {
+    url = "mirror://gnu/gcc/gcc-2.95.3/gcc-g++-2.95.3.tar.gz";
+    sha256 = "f82baf09502b0e908851bb983847c4431c8029493038e4b375c8a98f0ec7e73f";
+  };
 
-  # TinyCC defines wchar_t as int on arm64, where it is unsigned and musl's headers
-  # say so. Only the host's is affected: GCC uses the target's.
-  wcharFix = pkgs.lib.optionalString stdenv.hostPlatform.isAarch64 "'-D__WCHAR_TYPE__=unsigned'";
+  # TinyCC stays where it is pinned, so this does not move with a current GCC.
+  hostCC = tinycc.staticCC;
 
   platform = "--build=${stdenv.buildPlatform.config} --host=${stdenv.hostPlatform.config} --target=mipsel-ecoff";
 
@@ -36,8 +34,14 @@ let
   # gcc-2.95.3-libgcc-no-libc patch.
   #
   # There is no compiler in this environment other than TinyCC.
-  toolchain = pkgs.stdenvNoCC.mkDerivation {
-    pname = "mipsel-ecoff-toolchain";
+  #
+  # With cxx, C++ as well, in a toolchain of its own: its libgcc has the C++
+  # runtime, and collect2 gathers constructors, so the C toolchain, what it
+  # is checked against, and the WebAssembly build of it stay as they are. What
+  # cxx adds goes at the ends of lines, so that without it the derivation is
+  # the same.
+  mkToolchain = { cxx ? false }: pkgs.stdenvNoCC.mkDerivation {
+    pname = "mipsel-ecoff-toolchain${lib.optionalString cxx "-cxx"}";
     version = "2.95.3";
 
     dontUnpack = true;
@@ -50,14 +54,17 @@ let
       runHook preBuild
 
       tar xzf ${binutilsSrc}
-      tar xzf ${gccSrc}
+      tar xzf ${gccSrc}${lib.optionalString cxx "\ntar xzf ${gxxSrc}"}
       patch -p1 -d binutils-2.22 < ${./patches/binutils-2.22-mixed-endian-ecoff.patch}
       patch -p1 -d binutils-2.22 < ${./patches/binutils-2.22-align-end.patch}
       patch -p1 -d gcc-2.95.3 < ${./patches/gcc-2.95.3-obstack-lvalue.patch}
       patch -p1 -d gcc-2.95.3 < ${./patches/gcc-2.95.3-no-gofast.patch}
       patch -p1 -d gcc-2.95.3 < ${./patches/gcc-2.95.3-libgcc-no-libc.patch}
       patch -p1 -d gcc-2.95.3 < ${./patches/gcc-2.95.3-large-int-args.patch}
-      patch -p1 -d gcc-2.95.3 < ${./patches/gcc-2.95.3-lp64-host.patch}
+      patch -p1 -d gcc-2.95.3 < ${./patches/gcc-2.95.3-lp64-host.patch}${lib.optionalString cxx ''
+
+      patch -p1 -d gcc-2.95.3 < ${./patches/gcc-2.95.3-ecoff-collect2.patch}
+      patch -p1 -d gcc-2.95.3 < ${./patches/gcc-2.95.3-ecoff-no-libstdcxx.patch}''}
 
       # Neither is old enough not to know these hosts' names otherwise.
       cp -f ${pkgs.gnu-config}/config.sub binutils-2.22/config.sub
@@ -78,7 +85,7 @@ let
       (
         cd build-gcc
         CC="${hostCC}" CFLAGS= ../gcc-2.95.3/configure ${platform} --prefix=$out \
-          --enable-languages=c --disable-nls --with-gnu-as --with-gnu-ld
+          --enable-languages=c${lib.optionalString cxx ",c++"} --disable-nls --with-gnu-as --with-gnu-ld
         sed -i 's/^ALL_TARGET_MODULES/#&/; s/^INSTALL_TARGET_MODULES/#&/' Makefile
         make -j$NIX_BUILD_CORES MAKEINFO=true CC="${hostCC}" CFLAGS=
       )
@@ -90,7 +97,7 @@ let
       runHook preInstall
 
       # MAKEINFO=true writes no documentation, which install expects to find.
-      touch build-gcc/gcc/cpp.info build-gcc/gcc/gcc.info
+      touch build-gcc/gcc/cpp.info build-gcc/gcc/gcc.info${lib.optionalString cxx " build-gcc/gcc/cp/g++.info"}
       make -C build-gcc MAKEINFO=true install
 
       # Host libraries nothing here links against, which a 64-bit host installs
@@ -104,6 +111,9 @@ let
       runHook postInstall
     '';
   };
+
+  toolchain = mkToolchain { };
+  toolchainCxx = mkToolchain { cxx = true; };
 
   # The toolchain with the SDK, built locally and never cached. Specs in a file
   # do what the original script edited into the compiler's own: libps is the C
@@ -168,6 +178,34 @@ let
     touch $out
   '';
 
+  # The C++ toolchain still generates the C toolchain's C, and its C++ has to
+  # stay what a separate 32-bit x86 build of it generated, by GCC rather than
+  # TinyCC: tests/cxx/output.cc, and the code in every libgcc, which is the C
+  # toolchain's but for the C++ runtime and the _ctors.o collect2 needs. See
+  # tests/cxx/README.
+  cxxOutputCheck = pkgs.runCommandLocal "mipsel-ecoff-cxx-output-check" {
+    nativeBuildInputs = [ toolchainCxx ];
+  } ''
+    cp ${./tests/output.c} output.c
+    cp ${./tests/cxx/output.cc} output.cc
+    for level in O0 O2; do
+      mipsel-ecoff-gcc -$level -msoft-float -S -o output.$level.s output.c
+      diff -u ${./tests}/output.$level.s output.$level.s
+      mipsel-ecoff-g++ -$level -msoft-float -S -o output.cc.$level.s output.cc
+      diff -u ${./tests/cxx}/output.$level.s output.cc.$level.s
+    done
+
+    lib=${toolchainCxx}/lib/gcc-lib/mipsel-ecoff/${toolchainCxx.version}
+    for dir in $(cd $lib && find . -name libgcc.a | LC_ALL=C sed 's|/libgcc.a$||; s|^\./||; s|^\.$|.|' | LC_ALL=C sort); do
+      rm -rf members
+      mkdir members
+      (cd members && sh ${./tests/libgcc.sh} mipsel-ecoff-objdump mipsel-ecoff-ar $lib/$dir/libgcc.a | sed "s|^|$dir |")
+    done > libgcc.actual
+    diff -u ${./tests/cxx/libgcc.expected} libgcc.actual
+
+    touch $out
+  '';
+
   # Builds the SDK's sample, then a program using floats, which is what needs the
   # patches. Doubles have to land on the resident library's addresses, and the
   # results have to turn into executables.
@@ -198,8 +236,63 @@ let
 
     touch $out
   '';
+  # The toolchain as an archive, for hosts without Nix.
+  dist = import ./dist/dist.nix {
+    inherit pkgs toolchain gccSrc;
+    binutilsVersion = "2.22";
+    reference = ./tests;
+    drivers = [ "gcc" ];
+    multilibs = "-EB, -mips3, -msingle-float and -msoft-float";
+    about = ''
+      This is the compiler the Net Yaroze SDK was made for, and it is patched
+      for the SDK: it calls libps's soft-float routines by their standard
+      names, reads the mixed-endian objects in its libps.a, and word aligns
+      _end for its InitHeap. The SDK itself is not included. For mipsel-ecoff
+      in general, the 3.2.3 archive has the last releases with the target.
+      The gcc-g++ archive is the same compiler with C++.
+    '';
+  };
+
+  distCxx = import ./dist/dist.nix {
+    inherit pkgs gccSrc;
+    toolchain = toolchainCxx;
+    compiler = "gcc-g++";
+    binutilsVersion = "2.22";
+    reference = ./tests;
+    drivers = [ "gcc" "g++" "c++" ];
+    multilibs = "-EB, -mips3, -msingle-float and -msoft-float";
+    cxx = true;
+    about = ''
+      This is the 2.95.3 toolchain for the Net Yaroze, with the same patches
+      for its SDK, and C++ as well: mipsel-ecoff-g++. There is no libstdc++,
+      which needs a C library, so no iostreams, strings or containers: the
+      language, and its runtime, new, delete, typeinfo and exceptions, which
+      are in libgcc. That runtime calls malloc, free, abort, memset, strcmp
+      and strlen, which libps has all of but abort, so a Net Yaroze program
+      defines abort. -fno-exceptions keeps programs smaller.
+
+      Constructors and destructors of globals are gathered by collect2 at
+      link time, into __CTOR_LIST__ and __DTOR_LIST__, and main calls __main
+      to run them. The SDK's startup.o has a __main of its own that does
+      nothing, so on the Net Yaroze a program runs them itself, first thing
+      in main:
+
+          typedef void (*func_ptr)(void);
+          extern "C" func_ptr __CTOR_LIST__[];
+
+          for (unsigned long i = (unsigned long)__CTOR_LIST__[0]; i > 0; i--)
+              __CTOR_LIST__[i]();
+
+      dynamic_cast across a hierarchy, to a sibling base, gives a null
+      pointer in this compiler. Casts down to a derived class work.
+    '';
+  };
 in
 {
-  inherit toolchain sdk check outputCheck;
+  inherit toolchain toolchainCxx sdk check outputCheck cxxOutputCheck;
   tccCheck = tinycc.check;
+  distArchive = dist.archive;
+  distCheck = dist.check;
+  distCxxArchive = distCxx.archive;
+  distCxxCheck = distCxx.check;
 }

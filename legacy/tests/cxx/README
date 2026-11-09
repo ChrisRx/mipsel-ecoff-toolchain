@@ -1,0 +1,30 @@
+What the C++ toolchain generates, which the legacy-cxx-output check holds
+it to: output.cc at -O0 and -O2 with -msoft-float, and a hash of the code
+in each member of every libgcc, from ../libgcc.sh, one line per member,
+with its multilib's directory first. Its C is held to ../output.*.s, the C
+toolchain's reference, as that toolchain's is.
+
+They came from a separate build of the same sources, for a 32-bit x86
+host, by nixpkgs' GCC rather than TinyCC, with the patches toolchain.nix
+applies for C++ but gcc-2.95.3-lp64-host, which a 32-bit host does not
+need. It is configured as toolchain.nix configures it, with --build and
+--host i686-pc-linux-gnu, and CC set to gcc -std=gnu89 -fcommon -O1 -w
+-fno-strict-aliasing -fwrapv. The 64-bit TinyCC build matched it exactly.
+
+output.cc was also run on psxsdk's emulator, under Sony's BIOS and libps:
+everything it prints matches what a current host compiler's build prints,
+but for the dynamic_cast to a sibling base, which 2.95.3 gives as a null
+pointer. A 32-bit build does the same, so it is the compiler's, not this
+build's.
+
+To regenerate after deliberately changing the compiler, run, in a
+directory holding output.cc:
+
+    mipsel-ecoff-g++ -O0 -msoft-float -S -o output.O0.s output.cc
+    mipsel-ecoff-g++ -O2 -msoft-float -S -o output.O2.s output.cc
+
+and for libgcc.expected, for each directory under lib/gcc-lib holding a
+libgcc.a, sorted, in an empty directory:
+
+    sh libgcc.sh mipsel-ecoff-objdump mipsel-ecoff-ar \
+        PREFIX/lib/gcc-lib/mipsel-ecoff/2.95.3/DIR/libgcc.a | sed "s|^|DIR |"

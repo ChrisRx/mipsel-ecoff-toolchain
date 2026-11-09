@@ -1,0 +1,31 @@
+GCC @gcc@ and Binutils @binutils@ for mipsel-ecoff
+==============================================
+
+A cross toolchain for little-endian MIPS with ECOFF objects. The programs
+are static, for any Linux on this archive's CPU, with nothing else to
+install.
+
+@about@
+Unpack it anywhere and put its bin directory on PATH:
+
+    tar xzf @name@-x86_64-linux.tar.gz
+    export PATH=$PWD/@name@/bin:$PATH
+    mipsel-ecoff-gcc -O2 -msoft-float -c hello.c
+
+Each compiler driver in bin is a small script that points the compiler
+at the directory it was unpacked in, so the directory can move, and the
+commands can be linked to from elsewhere. Everything else in bin is the
+program itself.
+
+There is no C library: link with -nostdlib and your own startup code and
+link script, or with the C library or SDK of the system you are
+targeting. libgcc is included, with multilibs for @multilibs@.
+
+It is built from the original GNU sources, with a few patches, by
+https://github.com/ChrisRx/yaroze-toolchain, which has the sources, the
+patches and how to build the same archive with Nix. GCC and Binutils are
+free software under the GNU General Public License, in COPYING, and
+libgcc's sources add an exception for programs linked with it. The
+programs are linked with libiberty and TinyCC's runtime, under the GNU
+Lesser General Public License, in COPYING.LIB, and with musl, under the
+MIT license, in COPYRIGHT.musl.

@@ -1,14 +1,16 @@
 name: Cache toolchain
 
 # Keeps the cross toolchain and psxsdk commands in the binary cache the flake names,
-# so a first use downloads them rather than compiling GCC. They only change when
-# the flake or its lock does.
+# so a first use downloads them rather than compiling GCC, and publishes the legacy
+# toolchains' archives to R2, for hosts without Nix. They only change when the
+# flake, its lock or legacy/ does.
 on:
   push:
     branches: [main]
     paths:
       - flake.nix
       - flake.lock
+      - legacy/**
       - .github/workflows/cache.yaml
   workflow_dispatch:
 
@@ -20,12 +22,16 @@ jobs:
         include:
           - os: ubuntu-latest
             system: x86_64-linux
-            # GCC 2.95.3, which has no host entry for macOS, and the same as
-            # WebAssembly modules, which run on any host but are built here.
-            extra: legacy-toolchain legacy-toolchain-wasm
+            # GCC 2.95.3, with and without C++, and 3.2.3, which have no host
+            # entry for macOS, and 2.95.3 as WebAssembly modules, which run on
+            # any host but are built here.
+            extra: legacy-toolchain legacy-toolchain-cxx legacy-toolchain-gcc3 legacy-toolchain-wasm
+            # Their archives, published by legacy/dist/release.sh.
+            dist: legacy-toolchain-dist legacy-toolchain-cxx-dist legacy-toolchain-gcc3-dist
           - os: ubuntu-24.04-arm
             system: aarch64-linux
-            extra: legacy-toolchain
+            extra: legacy-toolchain legacy-toolchain-cxx legacy-toolchain-gcc3
+            dist: legacy-toolchain-dist legacy-toolchain-cxx-dist legacy-toolchain-gcc3-dist
           - os: macos-latest
             system: aarch64-darwin
     runs-on: ${{ matrix.os }}
@@ -53,3 +59,18 @@ jobs:
             out=$(nix build --no-link --print-out-paths --accept-flake-config ".#$pkg.out")
             cachix pin psxsdk "yaroze-$pkg-${{ matrix.system }}" "$out" --keep-revisions 1
           done
+      # Each archive is checked first, unpacked where its store path cannot be
+      # seen, and published unless it is there already.
+      - name: Publish the archives
+        if: matrix.dist
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          archives=()
+          for pkg in ${{ matrix.dist }}; do
+            nix build --no-link --accept-flake-config ".#checks.${{ matrix.system }}.${pkg/legacy-toolchain/legacy}"
+            archives+=("$(nix build --no-link --print-out-paths --accept-flake-config ".#$pkg")")
+          done
+          nix shell --accept-flake-config nixpkgs#awscli2 -c legacy/dist/release.sh "${archives[@]}"

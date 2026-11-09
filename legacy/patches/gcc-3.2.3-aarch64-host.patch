@@ -1,0 +1,16 @@
+Add a 64-bit ARM Linux host. config.gcc decodes the host as it does the
+target, and stops at a machine it does not know, which aarch64 is, since
+it came a decade later. Nothing it describes is used for the host, as for
+x86_64, so the entry is empty.
+
+--- a/gcc/config.gcc
++++ b/gcc/config.gcc
+@@ -1329,6 +1329,8 @@
+ 	gnu_ld=yes
+ 	float_format=i386
+ 	;;
++aarch64-*-linux*)	# 64-bit ARM GNU/Linux, only ever as the host
++	;;
+ i[34567]86-*-gnu*)
+ 	float_format=i386
+ 	;;
